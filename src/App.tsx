@@ -1656,19 +1656,26 @@ function App() {
     }
   }
   function handleRestoreFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    console.log('handleRestoreFileChange called');
     const file = e.target.files?.[0];
+    console.log('File selected:', file);
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
+        console.log('File read, parsing JSON...');
         const data = JSON.parse(event.target?.result as string);
+        console.log('Parsed data:', data);
         if (data && (data.tiles || data.tabs)) {
+          console.log('Valid backup, showing modal');
           setRestoreData(data); // Store the entire backup data
           setShowRestoreModal(true);
         } else {
+          console.log('Invalid backup - missing tiles/tabs');
           alert('Invalid backup file.');
         }
-      } catch {
+      } catch (error) {
+        console.error('Error parsing backup:', error);
         alert('Invalid backup file.');
       }
     };
