@@ -16,7 +16,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
+import { XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
 
 // ...MODAL COMPONENT...
 const Modal: React.FC<{ onClose: () => void, children: React.ReactNode }> = ({ onClose, children }) => (
@@ -1113,7 +1113,7 @@ function App() {
       }
     });
   }, [tiles, sortColumn, sortDirection]);
-  const [dragOverTab, setDragOverTab] = useState<string | null>(null);
+  const [_dragOverTab, setDragOverTab] = useState<string | null>(null);
   const [dragOverSubcategory, setDragOverSubcategory] = useState<string | null>(null);
   const [mainMenu, setMainMenu] = useState<'home' | 'files' | 'settings' | 'reports'>('home');
   const [pickedFolders, setPickedFolders] = useState<Array<{
@@ -1186,11 +1186,11 @@ function App() {
   }, [tiles]);
 
   // WebTabs handlers (same as previous code)
-  const handleCreateTile = () => {
-    setShowTileModal(true);
-    setEditTileId(null);
-    setForm({ name: '', description: '', link: '', category: activeTab, subcategory: '', logo: '', appType: 'web', localPath: '', paidSubscription: false, paymentFrequency: null, annualType: null, paymentAmount: null, signupDate: null, lastPaymentDate: null, creditCardId: null, paymentTypeLast4: '', creditCardName: '', accountLink: '', notes: '' });
-  };
+  // const handleCreateTile = () => {
+  //   setShowTileModal(true);
+  //   setEditTileId(null);
+  //   setForm({ name: '', description: '', link: '', category: activeTab, subcategory: '', logo: '', appType: 'web', localPath: '', paidSubscription: false, paymentFrequency: null, annualType: null, paymentAmount: null, signupDate: null, lastPaymentDate: null, creditCardId: null, paymentTypeLast4: '', creditCardName: '', accountLink: '', notes: '' });
+  // };
   const handleEditTile = (tileId: number) => {
     const tile = tiles.find(t => t.id === tileId);
     if (!tile) return;
@@ -1260,14 +1260,14 @@ function App() {
     setShowTileModal(false);
     setEditTileId(null);
   };
-  const openAddTabModal = () => {
-    setTabModalMode('add');
-    setTabFormName('');
-    setTabHasStockTicker(false);
-    setTabHomePageTabId(selectedHomePageTab); // Default to currently selected home page tab
-    setShowTabModal(true);
-    setEditingTabIndex(null);
-  };
+  // const openAddTabModal = () => {
+  //   setTabModalMode('add');
+  //   setTabFormName('');
+  //   setTabHasStockTicker(false);
+  //   setTabHomePageTabId(selectedHomePageTab); // Default to currently selected home page tab
+  //   setShowTabModal(true);
+  //   setEditingTabIndex(null);
+  // };
   const openEditTabModal = (idx: number) => {
     setTabModalMode('edit');
     setTabFormName(tabs[idx].name);
@@ -1701,7 +1701,7 @@ function App() {
   
   const columns = 3;
   const remainder = filteredTiles.length % columns;
-  const placeholders = remainder === 0 ? 0 : columns - remainder;
+  // const placeholders = remainder === 0 ? 0 : columns - remainder;
   function handleDragEnd(event: any) {
     const { active, over } = event;
     setDragOverTab(null);
