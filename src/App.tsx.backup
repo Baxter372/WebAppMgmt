@@ -1,0 +1,969 @@
+import React, { useState, useEffect, useRef } from 'react';
+import './App.css';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
+
+// ...MODAL COMPONENT...
+const Modal: React.FC<{ onClose: () => void, children: React.ReactNode }> = ({ onClose, children }) => (
+  <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal" onClick={e => e.stopPropagation()}>
+      <button className="modal-close" onClick={onClose} title="Close">&times;</button>
+      {children}
+    </div>
+  </div>
+);
+
+// ...TYPES...
+type Tile = {
+  id: number;
+  name: string;
+  description: string;
+  link: string;
+  category: string;
+  logo: string;
+};
+type Tab = { name: string; };
+type FinanceChild = { amount: number; date: string; };
+type FinanceTile = { id: number; name: string; description: string; children: FinanceChild[]; };
+
+const defaultTabs: Tab[] = [{ name: 'Banking' }, { name: 'AI' }];
+const initialTiles: Tile[] = [];
+
+// ...DROPPABLE TAB COMPONENT...
+function DroppableTab({
+  tab,
+  isActive,
+  isDragOver,
+  onClick,
+  onEdit,
+  onDelete,
+}: {
+  tab: Tab;
+  isActive: boolean;
+  isDragOver: boolean;
+  onClick: () => void;
+  onEdit: () => void;
+  onDelete?: () => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: tab.name });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`tab${isActive ? ' active' : ''}${isDragOver || isOver ? ' tab-drag-over' : ''}`}
+      onClick={onClick}
+    >
+      {tab.name}
+      <span
+        className="edit-icon"
+        title="Edit Tab"
+        onClick={e => { e.stopPropagation(); onEdit(); }}
+        role="button"
+        tabIndex={0}
+      >✏️</span>
+      {onDelete && (
+        <span
+          className="edit-icon"
+          title="Delete Tab"
+          style={{ marginLeft: 4 }}
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          role="button"
+          tabIndex={0}
+        >🗑️</span>
+      )}
+    </div>
+  );
+}
+
+// ...FINANCE MANAGEMENT PAGE...
+function FinanceManagementPage() {
+  const [financeTiles, setFinanceTiles] = useState<FinanceTile[]>(() => {
+    const saved = localStorage.getItem('financeTiles');
+    return saved ? JSON.parse(saved) : [];
+  });
+  useEffect(() => {
+    localStorage.setItem('financeTiles', JSON.stringify(financeTiles));
+  }, [financeTiles]);
+
+  const [tileForm, setTileForm] = useState({ name: '', description: '' });
+  const [childForms, setChildForms] = useState<{ [tileId: number]: { amount: string; date: string } }>({});
+  const today = new Date().toISOString().slice(0, 10);
+  const [showTileModal, setShowTileModal] = useState(false);
+
+  function handleAddTile(e: React.FormEvent) {
+    e.preventDefault();
+    setFinanceTiles(tiles => [
+      ...tiles,
+      { id: Date.now() + Math.random(), name: tileForm.name, description: tileForm.description, children: [] }
+    ]);
+    setTileForm({ name: '', description: '' });
+  }
+
+  function handleAddChild(tileId: number, e: React.FormEvent) {
+    e.preventDefault();
+    const { amount, date } = childForms[tileId] || {};
+    if (!amount || isNaN(Number(amount))) return;
+    setFinanceTiles(tiles =>
+      tiles.map(tile =>
+        tile.id === tileId
+          ? { ...tile, children: [...tile.children, { amount: Number(amount), date: date || today }] }
+          : tile
+      )
+    );
+    setChildForms(forms => ({ ...forms, [tileId]: { amount: '', date: today } }));
+  }
+
+  const allDates = Array.from(
+    new Set(financeTiles.flatMap(tile => tile.children.map(child => child.date)))
+  ).sort();
+
+  const chartData = allDates.map(date => {
+    const entry: any = { date };
+    financeTiles.forEach(tile => {
+      const child = tile.children.find(c => c.date === date);
+      entry[tile.name] = child ? child.amount : null;
+    });
+    return entry;
+  });
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 32 }}>
+      <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', width: '100%' }}>
+        {/* Tiles Column */}
+        <div style={{ flex: 1, minWidth: 320 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <h2 style={{ color: '#1976d2', margin: 0 }}>Finance Tiles</h2>
+            <button
+              className="create-tile-btn"
+              style={{
+                background: '#1976d2',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '50%',
+                width: 32,
+                height: 32,
+                fontSize: 20,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px #0001',
+                cursor: 'pointer',
+                marginLeft: 8
+              }}
+              title="Add Tile"
+              onClick={() => setShowTileModal(true)}
+              aria-label="Add Tile"
+            >
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="9" y="4" width="2" height="12" rx="1" fill="currentColor"/>
+                <rect x="4" y="9" width="12" height="2" rx="1" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          {showTileModal && (
+            <Modal onClose={() => setShowTileModal(false)}>
+              <form onSubmit={handleAddTile} style={{ padding: 16 }}>
+                <h2 style={{ color: '#1976d2', marginBottom: 16 }}>Add New Tile</h2>
+                <input
+                  placeholder="Name"
+                  value={tileForm.name}
+                  onChange={e => setTileForm(f => ({ ...f, name: e.target.value }))}
+                  required
+                  style={{ width: '100%', marginBottom: 12, padding: 8 }}
+                  autoFocus
+                />
+                <input
+                  placeholder="Description"
+                  value={tileForm.description}
+                  onChange={e => setTileForm(f => ({ ...f, description: e.target.value }))}
+                  required
+                  style={{ width: '100%', marginBottom: 12, padding: 8 }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button type="button" onClick={() => setShowTileModal(false)} style={{ padding: '8px 16px', background: '#eee', color: '#333', border: 'none', borderRadius: 4 }}>Cancel</button>
+                  <button type="submit" style={{ padding: '8px 16px', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4 }}>Add Tile</button>
+                </div>
+              </form>
+            </Modal>
+          )}
+          {financeTiles.map(tile => (
+            <div key={tile.id} style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginBottom: 24, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, color: '#1976d2' }}>{tile.name}</div>
+              <div style={{ color: '#444', marginBottom: 8 }}>{tile.description}</div>
+              <div>
+                <form
+                  onSubmit={e => handleAddChild(tile.id, e)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
+                >
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    value={childForms[tile.id]?.amount || ''}
+                    onChange={e => setChildForms(f => ({ ...f, [tile.id]: { ...f[tile.id], amount: e.target.value, date: f[tile.id]?.date || today } }))}
+                    required
+                    style={{ width: 90, padding: 6 }}
+                  />
+                  <input
+                    type="date"
+                    value={childForms[tile.id]?.date || today}
+                    onChange={e => setChildForms(f => ({ ...f, [tile.id]: { ...f[tile.id], date: e.target.value, amount: f[tile.id]?.amount || '' } }))}
+                    style={{ width: 140, padding: 6 }}
+                  />
+                  <button type="submit" style={{ padding: '6px 14px', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4 }}>Add</button>
+                </form>
+                <div>
+                  {tile.children.map((child, idx) => (
+                    <div key={idx} style={{ fontSize: 15, color: '#333', marginBottom: 2 }}>
+                      ${child.amount.toFixed(2)} on {child.date}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Graph + Totals Column */}
+        <div style={{ flex: 2, minWidth: 400, display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 16px #0002', padding: 32 }}>
+            <h2 style={{ color: '#1976d2', marginBottom: 16 }}>Finance Data Over Time</h2>
+            <ResponsiveContainer width="100%" height={360}>
+              <AreaChart data={chartData} margin={{ top: 24, right: 40, left: 0, bottom: 24 }}>
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <CartesianGrid strokeDasharray="3 3" />
+                {financeTiles.map(tile => (
+                  <Area
+                    key={tile.id}
+                    type="monotone"
+                    dataKey={tile.name}
+                    stroke={`#${Math.floor(Math.abs(Math.sin(tile.id)) * 16777215).toString(16).padStart(6, '0')}`}
+                    fill={`#${Math.floor(Math.abs(Math.sin(tile.id + 1)) * 16777215).toString(16).padStart(6, '0')}33`}
+                    strokeWidth={3}
+                    dot={{ r: 5 }}
+                    connectNulls
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div style={{ background: '#f4f6fb', borderRadius: 10, padding: 20, boxShadow: '0 2px 8px #0001', maxWidth: '100%' }}>
+            <div style={{ fontWeight: 600, color: '#1976d2', fontSize: 18, marginBottom: 8 }}>Totals by Date</div>
+            {allDates.map(date => (
+              <div key={date} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, marginBottom: 4, padding: '2px 0' }}>
+                <span style={{ color: '#1976d2', fontWeight: 500 }}>{date}</span>
+                <span style={{ color: '#333', fontWeight: 700 }}>&nbsp;&nbsp;&nbsp;{financeTiles.reduce((sum, tile) => {
+                  const child = tile.children.find(c => c.date === date);
+                  return sum + (child ? child.amount : 0);
+                }, 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ...START OF MAIN APP...
+function App() {
+  // --- WebTabs state and handlers ---
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    const saved = localStorage.getItem('tabs');
+    return saved ? JSON.parse(saved) : defaultTabs;
+  });
+  const [tiles, setTiles] = useState<Tile[]>(() => {
+    const saved = localStorage.getItem('tiles');
+    return saved ? JSON.parse(saved) : initialTiles;
+  });
+
+  useEffect(() => {
+    setTiles(tiles => {
+      if (tiles.length > 0 && !('id' in tiles[0])) {
+        const migrated = tiles.map(tile => ({
+          ...tile,
+          id: Date.now() + Math.random()
+        }));
+        localStorage.setItem('tiles', JSON.stringify(migrated));
+        return migrated;
+      }
+      return tiles;
+    });
+    // eslint-disable-next-line
+  }, []);
+
+  const [activeTab, setActiveTab] = useState<string>(tabs[0]?.name || '');
+  const [showTileModal, setShowTileModal] = useState(false);
+  const [showTabModal, setShowTabModal] = useState(false);
+  const [tabModalMode, setTabModalMode] = useState<'add' | 'edit'>('add');
+  const [form, setForm] = useState<Omit<Tile, 'id'>>({
+    name: '',
+    description: '',
+    link: '',
+    category: tabs[0]?.name || '',
+    logo: '',
+  });
+  const [editTileId, setEditTileId] = useState<number | null>(null);
+  const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
+  const [tabFormName, setTabFormName] = useState<string>('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [tileToDeleteId, setTileToDeleteId] = useState<number | null>(null);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoreData, setRestoreData] = useState<{ tiles: Tile[]; tabs: Tab[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOverTab, setDragOverTab] = useState<string | null>(null);
+  const [mainMenu, setMainMenu] = useState<'webtabs' | 'finance'>('webtabs');
+
+  useEffect(() => {
+    localStorage.setItem('tabs', JSON.stringify(tabs));
+  }, [tabs]);
+  useEffect(() => {
+    localStorage.setItem('tiles', JSON.stringify(tiles));
+  }, [tiles]);
+  useEffect(() => {
+    if (!tabs.find(tab => tab.name === activeTab)) {
+      setActiveTab(tabs[0]?.name || '');
+    }
+  }, [tabs, activeTab]);
+
+  // WebTabs handlers (same as previous code)
+  const handleCreateTile = () => {
+    setShowTileModal(true);
+    setEditTileId(null);
+    setForm({ name: '', description: '', link: '', category: activeTab, logo: '' });
+  };
+  const handleEditTile = (tileId: number) => {
+    const tile = tiles.find(t => t.id === tileId);
+    if (!tile) return;
+    setShowTileModal(true);
+    setEditTileId(tileId);
+    setForm({
+      name: tile.name,
+      description: tile.description,
+      link: tile.link,
+      category: tile.category,
+      logo: tile.logo,
+    });
+  };
+  const handleDeleteTile = (tileId: number) => {
+    setTileToDeleteId(tileId);
+    setShowDeleteModal(true);
+  };
+  const confirmDeleteTile = () => {
+    if (tileToDeleteId !== null) {
+      setTiles(tiles => tiles.filter(t => t.id !== tileToDeleteId));
+    }
+    setShowDeleteModal(false);
+    setTileToDeleteId(null);
+  };
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editTileId !== null) {
+      setTiles(tiles =>
+        tiles.map(t =>
+          t.id === editTileId
+            ? { ...t, ...form }
+            : t
+        )
+      );
+    } else {
+      setTiles([...tiles, { ...form, id: Date.now() + Math.random() }]);
+    }
+    setShowTileModal(false);
+    setEditTileId(null);
+  };
+  const openAddTabModal = () => {
+    setTabModalMode('add');
+    setTabFormName('');
+    setShowTabModal(true);
+    setEditingTabIndex(null);
+  };
+  const openEditTabModal = (idx: number) => {
+    setTabModalMode('edit');
+    setTabFormName(tabs[idx].name);
+    setShowTabModal(true);
+    setEditingTabIndex(idx);
+  };
+  const handleTabFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newName = tabFormName.trim();
+    if (!newName || tabs.some((tab, i) => tab.name === newName && (tabModalMode === 'add' || i !== editingTabIndex))) return;
+    if (tabModalMode === 'add') {
+      setTabs([...tabs, { name: newName }]);
+      setActiveTab(newName);
+    } else if (editingTabIndex !== null) {
+      const oldName = tabs[editingTabIndex].name;
+      const updatedTabs = tabs.map((tab, i) => i === editingTabIndex ? { name: newName } : tab);
+      const updatedTiles = tiles.map(tile =>
+        tile.category === oldName ? { ...tile, category: newName } : tile
+      );
+      setTabs(updatedTabs);
+      setTiles(updatedTiles);
+      setActiveTab(newName);
+    }
+    setShowTabModal(false);
+    setEditingTabIndex(null);
+    setTabFormName('');
+  };
+  const handleDeleteTab = (idx: number) => {
+    const tabName = tabs[idx].name;
+    if (!window.confirm(`Delete tab "${tabName}"? All tiles in this category will also be deleted.`)) return;
+    const updatedTabs = tabs.filter((_, i) => i !== idx);
+    const updatedTiles = tiles.filter(tile => tile.category !== tabName);
+    setTabs(updatedTabs);
+    setTiles(updatedTiles);
+    setActiveTab(updatedTabs[0]?.name || '');
+  };
+  function handleBackup() {
+    const tiles = localStorage.getItem('tiles');
+    const tabs = localStorage.getItem('tabs');
+    const backup = {
+      tiles: tiles ? JSON.parse(tiles) : [],
+      tabs: tabs ? JSON.parse(tabs) : [],
+      backupDate: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bills-apps-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function handleRestoreClick() {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  }
+  function handleRestoreFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data && Array.isArray(data.tiles) && Array.isArray(data.tabs)) {
+          setRestoreData({ tiles: data.tiles, tabs: data.tabs });
+          setShowRestoreModal(true);
+        } else {
+          alert('Invalid backup file.');
+        }
+      } catch {
+        alert('Invalid backup file.');
+      }
+    };
+    reader.readAsText(file);
+  }
+  function confirmRestore() {
+    if (restoreData) {
+      setTiles(restoreData.tiles);
+      setTabs(restoreData.tabs);
+      setShowRestoreModal(false);
+      setRestoreData(null);
+      setActiveTab(restoreData.tabs[0]?.name || '');
+    }
+  }
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+  const filteredTiles = tiles.filter(tile => tile.category === activeTab);
+  const filteredTileIds = filteredTiles.map(tile => tile.id);
+  const columns = 3;
+  const remainder = filteredTiles.length % columns;
+  const placeholders = remainder === 0 ? 0 : columns - remainder;
+  function handleDragEnd(event: any) {
+    const { active, over } = event;
+    setDragOverTab(null);
+    if (over && typeof over.id === 'string' && tabs.some(tab => tab.name === over.id)) {
+      setTiles(tiles =>
+        tiles.map(tile =>
+          tile.id === active.id ? { ...tile, category: over.id } : tile
+        )
+      );
+      setActiveTab(over.id);
+      return;
+    }
+    if (!over || active.id === over.id) return;
+    const oldIndex = filteredTileIds.indexOf(active.id);
+    const newIndex = filteredTileIds.indexOf(over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(filteredTiles, oldIndex, newIndex);
+    const newTiles: Tile[] = [];
+    let filteredIdx = 0;
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i].category === activeTab) {
+        newTiles.push(reordered[filteredIdx++]);
+      } else {
+        newTiles.push(tiles[i]);
+      }
+    }
+    setTiles(newTiles);
+  }
+  const TrashIcon = (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect x="6.5" y="8" width="1.5" height="6" rx="0.75" fill="#888"/>
+      <rect x="12" y="8" width="1.5" height="6" rx="0.75" fill="#888"/>
+      <rect x="9.25" y="8" width="1.5" height="6" rx="0.75" fill="#888"/>
+      <rect x="4" y="5" width="12" height="2" rx="1" fill="#888"/>
+      <rect x="7" y="3" width="6" height="2" rx="1" fill="#888"/>
+      <rect x="3" y="7" width="14" height="10" rx="2" stroke="#888" strokeWidth="1.5" fill="none"/>
+    </svg>
+  );
+  function SortableTile({ tile, idx }: { tile: Tile; idx: number }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tile.id });
+    return (
+      <a
+        className="tile"
+        href={tile.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        ref={setNodeRef}
+        style={{
+          position: 'relative',
+          textDecoration: 'none',
+          color: 'inherit',
+          userSelect: 'none',
+          transform: CSS.Transform.toString(transform),
+          transition,
+          boxShadow: isDragging
+            ? '0 8px 32px #1976d244'
+            : '0 2px 16px #0002',
+          zIndex: isDragging ? 100 : undefined,
+        }}
+        {...attributes}
+        {...listeners}
+      >
+        {tile.logo && (
+          <img
+            src={tile.logo}
+            alt={tile.name + ' logo'}
+            className="tile-logo"
+          />
+        )}
+        <div className="tile-content">
+          <div className="tile-title">{tile.name}</div>
+          <p className="tile-desc">{tile.description}</p>
+        </div>
+        <span
+          className="edit-icon"
+          title="Edit Tile"
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 36,
+            color: '#333',
+            fontSize: '1.3em',
+            background: '#fff',
+            borderRadius: '50%',
+            padding: 4,
+            zIndex: 2,
+            boxShadow: '0 1px 4px #0001',
+            cursor: 'pointer'
+          }}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); handleEditTile(tile.id); }}
+          role="button"
+          tabIndex={0}
+        >✏️</span>
+        <span
+          className="edit-icon"
+          title="Delete Tile"
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            color: '#888',
+            fontSize: '1.3em',
+            background: '#fff',
+            borderRadius: '50%',
+            padding: 4,
+            zIndex: 2,
+            boxShadow: '0 1px 4px #0001',
+            cursor: 'pointer'
+          }}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteTile(tile.id); }}
+          role="button"
+          tabIndex={0}
+        >{TrashIcon}</span>
+      </a>
+    );
+  }
+  const webTabsIcon = (
+    <span style={{ fontSize: 22, marginRight: 12 }}>🌐</span>
+  );
+  const financeIcon = (
+    <span style={{ fontSize: 22, marginRight: 12 }}>💰</span>
+  );
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {/* Sidebar */}
+      <aside
+        style={{
+          width: 220,
+          background: '#1a237e',
+          color: '#fff',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          padding: '0 0 24px 0',
+          boxShadow: '2px 0 12px #0002',
+        }}
+      >
+        <div style={{
+          fontWeight: 700,
+          fontSize: 24,
+          padding: '32px 0 24px 0',
+          textAlign: 'center',
+          letterSpacing: 1,
+          borderBottom: '1px solid #283593',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}>
+          <span style={{
+            fontSize: 36,
+            marginBottom: 8,
+            color: '#90caf9',
+          }}>🧩</span>
+          Bill's Apps
+        </div>
+        <nav style={{ marginTop: 32, flex: 1 }}>
+          <div
+            onClick={() => setMainMenu('webtabs')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '14px 32px',
+              cursor: 'pointer',
+              background: mainMenu === 'webtabs' ? '#1976d2' : 'none',
+              color: mainMenu === 'webtabs' ? '#fff' : '#bbdefb',
+              fontWeight: mainMenu === 'webtabs' ? 700 : 500,
+              fontSize: 18,
+              borderLeft: mainMenu === 'webtabs' ? '4px solid #fff' : '4px solid transparent',
+              transition: 'background 0.2s, color 0.2s',
+            }}
+          >
+            {webTabsIcon} WebTabs
+          </div>
+          <div
+            onClick={() => setMainMenu('finance')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '14px 32px',
+              cursor: 'pointer',
+              background: mainMenu === 'finance' ? '#1976d2' : 'none',
+              color: mainMenu === 'finance' ? '#fff' : '#bbdefb',
+              fontWeight: mainMenu === 'finance' ? 700 : 500,
+              fontSize: 18,
+              borderLeft: mainMenu === 'finance' ? '4px solid #fff' : '4px solid transparent',
+              transition: 'background 0.2s, color 0.2s',
+            }}
+          >
+            {financeIcon} Finance Management
+          </div>
+        </nav>
+      </aside>
+
+      {/* Main Content */}
+      <div style={{ flex: 1, position: 'relative', marginLeft: 32 }}>
+        <div className="header">Bill's Applications</div>
+        {mainMenu === 'webtabs' ? (
+          <>
+            {/* Backup and Restore Buttons */}
+            <button
+              style={{
+                position: 'absolute',
+                top: 24,
+                right: 180,
+                background: '#1976d2',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                padding: '10px 20px',
+                fontSize: '1rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                zIndex: 10,
+              }}
+              onClick={handleBackup}
+            >
+              Backup Data
+            </button>
+            <button
+              style={{
+                position: 'absolute',
+                top: 24,
+                right: 32,
+                background: '#43a047',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                padding: '10px 20px',
+                fontSize: '1rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                zIndex: 10,
+              }}
+              onClick={handleRestoreClick}
+            >
+              Restore Data
+            </button>
+            <input
+              type="file"
+              accept="application/json"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleRestoreFileChange}
+            />
+
+            <div className="tabs-bar">
+              {tabs.map((tab, idx) => (
+                <DroppableTab
+                  key={tab.name}
+                  tab={tab}
+                  isActive={activeTab === tab.name}
+                  isDragOver={dragOverTab === tab.name}
+                  onClick={() => setActiveTab(tab.name)}
+                  onEdit={() => openEditTabModal(idx)}
+                  onDelete={tabs.length > 1 ? () => handleDeleteTab(idx) : undefined}
+                />
+              ))}
+              <button
+                className="create-tile-btn"
+                onClick={handleCreateTile}
+                title="Create Tile"
+              >
+                +
+              </button>
+              <button className="add-tab-btn" onClick={openAddTabModal} title="Add Tab">+</button>
+            </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+              onDragOver={event => {
+                const { over } = event;
+                if (over && over.id && typeof over.id === 'string' && tabs.some(tab => tab.name === over.id)) {
+                  setDragOverTab(over.id);
+                } else {
+                  setDragOverTab(null);
+                }
+              }}
+            >
+              <SortableContext
+                items={filteredTileIds}
+                strategy={rectSortingStrategy}
+              >
+                <div className="tiles-grid tiles-grid-3">
+                  {filteredTiles.map((tile, idx) => (
+                    <SortableTile tile={tile} idx={idx} key={tile.id} />
+                  ))}
+                  {Array.from({ length: placeholders }).map((_, i) => (
+                    <div key={`placeholder-${i}`} className="tile" style={{ visibility: 'hidden' }}></div>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+
+            {/* Tile Modal */}
+            {showTileModal && (
+              <Modal onClose={() => { setShowTileModal(false); setEditTileId(null); }}>
+                <form onSubmit={handleFormSubmit}>
+                  <h2>{editTileId !== null ? 'Edit Tile' : 'Create a New Tile'}</h2>
+                  <label>
+                    Name:<br />
+                    <input
+                      name="name"
+                      value={form.name}
+                      onChange={handleFormChange}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                  <label>
+                    Description:<br />
+                    <textarea
+                      name="description"
+                      value={form.description}
+                      onChange={handleFormChange}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Web Link:<br />
+                    <input
+                      name="link"
+                      value={form.link}
+                      onChange={handleFormChange}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Logo URL:<br />
+                    <input
+                      name="logo"
+                      value={form.logo}
+                      onChange={handleFormChange}
+                      placeholder="https://example.com/logo.png"
+                    />
+                  </label>
+                  <label>
+                    Category:<br />
+                    <select
+                      name="category"
+                      value={form.category}
+                      onChange={handleFormChange}
+                    >
+                      {tabs.map(tab => (
+                        <option key={tab.name} value={tab.name}>{tab.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit">
+                    {editTileId !== null ? 'Save Changes' : 'Create'}
+                  </button>
+                  <button type="button" onClick={() => { setShowTileModal(false); setEditTileId(null); }}>
+                    Cancel
+                  </button>
+                </form>
+              </Modal>
+            )}
+
+            {/* Tab Modal */}
+            {showTabModal && (
+              <Modal onClose={() => { setShowTabModal(false); setEditingTabIndex(null); setTabFormName(''); }}>
+                <form onSubmit={handleTabFormSubmit}>
+                  <h2>{tabModalMode === 'add' ? 'Add Tab' : 'Edit Tab'}</h2>
+                  <label>
+                    Tab Name:<br />
+                    <input
+                      value={tabFormName}
+                      onChange={e => setTabFormName(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                  <button type="submit">
+                    {tabModalMode === 'add' ? 'Add Tab' : 'Save'}
+                  </button>
+                  <button type="button" onClick={() => { setShowTabModal(false); setEditingTabIndex(null); setTabFormName(''); }}>
+                    Cancel
+                  </button>
+                </form>
+              </Modal>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && (
+              <Modal onClose={() => { setShowDeleteModal(false); setTileToDeleteId(null); }}>
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  <h2 style={{ marginBottom: 16 }}>Delete Tile?</h2>
+                  <p style={{ marginBottom: 24 }}>Are you sure you want to delete this tile? This action cannot be undone.</p>
+                  <button
+                    style={{
+                      background: '#e53935',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '10px 20px',
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      marginRight: 8,
+                    }}
+                    onClick={confirmDeleteTile}
+                  >
+                    Yes, Delete
+                  </button>
+                  <button
+                    style={{
+                      background: '#eee',
+                      color: '#333',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '10px 20px',
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => { setShowDeleteModal(false); setTileToDeleteId(null); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </Modal>
+            )}
+
+            {/* Restore Confirmation Modal */}
+            {showRestoreModal && (
+              <Modal onClose={() => { setShowRestoreModal(false); setRestoreData(null); }}>
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  <h2 style={{ marginBottom: 16 }}>Restore Data?</h2>
+                  <p style={{ marginBottom: 24 }}>
+                    Are you sure you want to restore this backup? This will overwrite your current tiles and tabs.
+                  </p>
+                  <button
+                    style={{
+                      background: '#43a047',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '10px 20px',
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      marginRight: 8,
+                    }}
+                    onClick={confirmRestore}
+                  >
+                    Yes, Restore
+                  </button>
+                  <button
+                    style={{
+                      background: '#eee',
+                      color: '#333',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '10px 20px',
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => { setShowRestoreModal(false); setRestoreData(null); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </Modal>
+            )}
+          </>
+        ) : (
+          <FinanceManagementPage />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default App;

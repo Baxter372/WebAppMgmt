@@ -1,0 +1,342 @@
+body {
+  margin: 0;
+  padding: 0;
+  background: #f4f6fb;
+  font-family: 'Inter', Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.header {
+  background: #1976d2;
+  color: #fff;
+  padding: 48px 0 32px 0;
+  text-align: center;
+  font-size: 2.8rem;
+  font-weight: 700;
+  letter-spacing: -1px;
+  box-shadow: 0 2px 8px #0001;
+  border-radius: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.tabs-bar {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  min-height: 60px;
+  justify-content: flex-start;
+  margin-bottom: 32px;
+  border-bottom: 2px solid #e0e0e0;
+  background: transparent;
+  position: relative;
+}
+
+.tab {
+  background: #f7f7fa;
+  border: 1px solid #e0e0e0;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 16px 32px 12px 32px;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #444;
+  margin-right: 2px;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
+  z-index: 1;
+}
+
+.tab.active {
+  background: #fff;
+  color: #1976d2;
+  font-weight: 700;
+  border-bottom: 2px solid #fff;
+  z-index: 2;
+}
+
+.tab:hover {
+  background: #e3f2fd;
+  color: #1976d2;
+  box-shadow: 0 2px 12px #1976d244;
+  transform: scale(1.04);
+  z-index: 3;
+}
+
+.tab-drag-over {
+  background: #1976d2 !important;
+  color: #fff !important;
+  box-shadow: 0 6px 24px #1976d244;
+  transform: scale(1.08);
+  z-index: 5;
+}
+
+.tab .edit-icon {
+  margin-left: 8px;
+  font-size: 1.1em;
+  color: #888;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.tab .edit-icon:hover {
+  color: #1976d2;
+}
+
+.add-tab-btn {
+  background: #fff;
+  color: #1976d2;
+  border: 2px dashed #1976d2;
+  border-radius: 12px 12px 0 0;
+  padding: 12px 24px 8px 24px;
+  font-size: 1.3rem;
+  font-weight: bold;
+  margin-left: 8px;
+  cursor: pointer;
+  transition: background 0.2s, border 0.2s;
+  z-index: 1;
+}
+.add-tab-btn:hover {
+  background: #e3f2fd;
+  border-color: #1565c0;
+}
+
+.create-tile-btn {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 8px #1976d233;
+  transition: background 0.2s, box-shadow 0.2s;
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 0;
+  line-height: 1;
+}
+.create-tile-btn:hover {
+  background: #1565c0;
+  box-shadow: 0 4px 16px #1976d244;
+}
+
+.tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+  align-items: start;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (min-width: 1600px) {
+  .tiles-grid { 
+    grid-template-columns: repeat(3, minmax(380px, 450px));
+  }
+}
+@media (max-width: 1400px) {
+  .tiles-grid { 
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  }
+}
+@media (max-width: 1100px) {
+  .tiles-grid { 
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .tiles-grid { 
+    grid-template-columns: 1fr;
+  }
+}
+
+.tile, .create-tile {
+  width: 100%;
+  min-width: 320px;
+  max-width: 450px;
+  box-sizing: border-box;
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 16px #0002;
+  padding: 20px 28px 20px 24px;
+  transition: box-shadow 0.2s, transform 0.2s;
+  position: relative;
+  min-height: 110px;
+}
+.tile:hover {
+  box-shadow: 0 4px 24px #1976d233;
+  transform: translateY(-2px) scale(1.01);
+}
+
+.tile-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: #f4f6fb;
+  border-radius: 12px;
+  margin-right: 20px;
+  flex-shrink: 0;
+  border: 1px solid #e3eafc;
+}
+
+.tile-content {
+  flex: 1;
+  text-align: left;
+  padding-right: 80px;
+}
+
+.tile-title {
+  color: #1976d2;
+  font-weight: 700;
+  font-size: 1.15rem;
+  text-decoration: none;
+  margin-bottom: 8px;
+  display: block;
+  line-height: 1.4;
+}
+
+.tile-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #666;
+  line-height: 1.5;
+}
+
+.create-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e3f2fd;
+  border: 2px dashed #1976d2;
+  border-radius: 16px;
+  color: #1976d2;
+  font-weight: bold;
+  font-size: 1.2rem;
+  cursor: pointer;
+  min-height: 110px;
+  transition: background 0.2s, border 0.2s;
+}
+.create-tile:hover {
+  background: #bbdefb;
+  border-color: #1565c0;
+}
+
+/* Modal styles */
+.modal-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.18);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 24px #0003;
+  padding: 32px 24px;
+  max-width: 400px;
+  width: 100%;
+  text-align: left;
+  position: relative;
+  z-index: 1001;
+}
+.modal h2 {
+  margin-top: 0;
+}
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #888;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.modal-close:hover {
+  color: #1976d2;
+}
+
+form label {
+  font-weight: 600;
+  color: #222;
+}
+
+form input,
+form textarea,
+form select {
+  width: 100%;
+  padding: 10px;
+  margin-top: 4px;
+  margin-bottom: 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+form button[type="submit"] {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: background 0.2s;
+}
+form button[type="submit"]:hover {
+  background: #1565c0;
+}
+form button[type="button"] {
+  background: #eee;
+  color: #333;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+form button[type="button"]:hover {
+  background: #ccc;
+}
+
+@media (max-width: 700px) {
+  .header {
+    font-size: 2rem;
+    padding: 24px 0 16px 0;
+  }
+  .tiles-grid {
+    grid-template-columns: 1fr;
+  }
+}
