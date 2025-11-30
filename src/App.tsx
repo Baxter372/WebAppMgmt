@@ -1022,6 +1022,7 @@ function App() {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [restoreData, setRestoreData] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   
   // Banner Title state
   const [bannerTitle, setBannerTitle] = useState<string>(() => {
@@ -4295,7 +4296,7 @@ function App() {
                 <h1 style={{ margin: 0 }}>Files</h1>
               </div>
               <button
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                onClick={() => folderInputRef.current && folderInputRef.current.click()}
                 style={{
                   background: '#f4f6fb',
                   color: '#1976d2',
@@ -4320,7 +4321,7 @@ function App() {
               </button>
               <input
                 type="file"
-                ref={fileInputRef}
+                ref={folderInputRef}
                 style={{ display: 'none' }}
                 // @ts-ignore
                 webkitdirectory="true"
