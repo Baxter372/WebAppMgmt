@@ -524,6 +524,7 @@ function getUpcomingPaymentsNextMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
 
 // ...START OF MAIN APP...
 function App() {
+  console.log('App component loaded!');
   // --- HomePageTabs state and handlers ---
   const [homePageTabs, setHomePageTabs] = useState<HomePageTab[]>(() => {
     const saved = localStorage.getItem('homePageTabs');
