@@ -1020,7 +1020,7 @@ function App() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tileToDeleteId, setTileToDeleteId] = useState<number | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const [restoreData, setRestoreData] = useState<{ tiles: Tile[]; tabs: Tab[] } | null>(null);
+  const [restoreData, setRestoreData] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Banner Title state
@@ -1624,11 +1624,18 @@ function App() {
     setTiles(updatedTiles);
   };
   function handleBackup() {
-    const tiles = localStorage.getItem('tiles');
-    const tabs = localStorage.getItem('tabs');
+    // Backup all localStorage data
     const backup = {
-      tiles: tiles ? JSON.parse(tiles) : [],
-      tabs: tabs ? JSON.parse(tabs) : [],
+      tiles: localStorage.getItem('tiles') ? JSON.parse(localStorage.getItem('tiles')!) : [],
+      tabs: localStorage.getItem('tabs') ? JSON.parse(localStorage.getItem('tabs')!) : [],
+      financeTiles: localStorage.getItem('financeTiles') ? JSON.parse(localStorage.getItem('financeTiles')!) : [],
+      homePageTabs: localStorage.getItem('homePageTabs') ? JSON.parse(localStorage.getItem('homePageTabs')!) : [],
+      creditCards: localStorage.getItem('creditCards') ? JSON.parse(localStorage.getItem('creditCards')!) : [],
+      stockSymbols: localStorage.getItem('stockSymbols') ? JSON.parse(localStorage.getItem('stockSymbols')!) : [],
+      expandedHomePageTabs: localStorage.getItem('expandedHomePageTabs') ? JSON.parse(localStorage.getItem('expandedHomePageTabs')!) : [],
+      pickedFolders: localStorage.getItem('pickedFolders') ? JSON.parse(localStorage.getItem('pickedFolders')!) : [],
+      bannerTitle: localStorage.getItem('bannerTitle') || '',
+      lastPaymentsReminderShown: localStorage.getItem('lastPaymentsReminderShown') || '',
       backupDate: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -1654,8 +1661,8 @@ function App() {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        if (data && Array.isArray(data.tiles) && Array.isArray(data.tabs)) {
-          setRestoreData({ tiles: data.tiles, tabs: data.tabs });
+        if (data && (data.tiles || data.tabs)) {
+          setRestoreData(data); // Store the entire backup data
           setShowRestoreModal(true);
         } else {
           alert('Invalid backup file.');
@@ -1668,11 +1675,61 @@ function App() {
   }
   function confirmRestore() {
     if (restoreData) {
-      setTiles(restoreData.tiles);
-      setTabs(restoreData.tabs);
-      setShowRestoreModal(false);
-      setRestoreData(null);
-      setActiveTab(restoreData.tabs[0]?.name || '');
+      try {
+        // Restore all data from the backup
+        if (restoreData.tiles) {
+          localStorage.setItem('tiles', JSON.stringify(restoreData.tiles));
+          setTiles(restoreData.tiles);
+        }
+        if (restoreData.tabs) {
+          localStorage.setItem('tabs', JSON.stringify(restoreData.tabs));
+          setTabs(restoreData.tabs);
+          setActiveTab(restoreData.tabs[0]?.name || '');
+        }
+        if (restoreData.financeTiles) {
+          localStorage.setItem('financeTiles', JSON.stringify(restoreData.financeTiles));
+          setFinanceTiles(restoreData.financeTiles);
+        }
+        if (restoreData.homePageTabs) {
+          localStorage.setItem('homePageTabs', JSON.stringify(restoreData.homePageTabs));
+          setHomePageTabs(restoreData.homePageTabs);
+          if (restoreData.homePageTabs.length > 0) {
+            setSelectedHomePageTab(restoreData.homePageTabs[0].id);
+          }
+        }
+        if (restoreData.creditCards) {
+          localStorage.setItem('creditCards', JSON.stringify(restoreData.creditCards));
+          setCreditCards(restoreData.creditCards);
+        }
+        if (restoreData.stockSymbols) {
+          localStorage.setItem('stockSymbols', JSON.stringify(restoreData.stockSymbols));
+          setStockSymbols(restoreData.stockSymbols);
+        }
+        if (restoreData.expandedHomePageTabs) {
+          localStorage.setItem('expandedHomePageTabs', JSON.stringify(restoreData.expandedHomePageTabs));
+          setExpandedHomePageTabs(new Set(restoreData.expandedHomePageTabs));
+        }
+        if (restoreData.pickedFolders) {
+          localStorage.setItem('pickedFolders', JSON.stringify(restoreData.pickedFolders));
+          setPickedFolders(restoreData.pickedFolders);
+        }
+        if (restoreData.bannerTitle) {
+          localStorage.setItem('bannerTitle', restoreData.bannerTitle);
+          setBannerTitle(restoreData.bannerTitle);
+        }
+        if (restoreData.lastPaymentsReminderShown) {
+          localStorage.setItem('lastPaymentsReminderShown', restoreData.lastPaymentsReminderShown);
+        }
+        
+        setShowRestoreModal(false);
+        setRestoreData(null);
+        alert('Data restored successfully! The page will reload.');
+        window.location.reload();
+      } catch (error) {
+        alert('Error restoring backup: ' + error);
+        setShowRestoreModal(false);
+        setRestoreData(null);
+      }
     }
   }
   const sensors = useSensors(
@@ -5504,6 +5561,5 @@ function App() {
 }
 
 export default App;
-// Force update
 
 
