@@ -1650,9 +1650,14 @@ function App() {
     URL.revokeObjectURL(url);
   }
   function handleRestoreClick() {
+    console.log('Restore button clicked');
+    console.log('fileInputRef:', fileInputRef.current);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
+      console.log('File input clicked');
+    } else {
+      console.error('fileInputRef.current is null!');
     }
   }
   function handleRestoreFileChange(e: React.ChangeEvent<HTMLInputElement>) {
