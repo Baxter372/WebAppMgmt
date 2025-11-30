@@ -1022,6 +1022,8 @@ function App() {
   const [tileToDeleteId, setTileToDeleteId] = useState<number | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [restoreData, setRestoreData] = useState<any>(null);
+  const [showSimpleImportModal, setShowSimpleImportModal] = useState(false);
+  const [importTextarea, setImportTextarea] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   
@@ -1744,6 +1746,64 @@ function App() {
         setShowRestoreModal(false);
         setRestoreData(null);
       }
+    }
+  }
+  
+  function handleSimpleImport() {
+    try {
+      const data = JSON.parse(importTextarea);
+      
+      // Restore all data
+      if (data.tiles) {
+        localStorage.setItem('tiles', JSON.stringify(data.tiles));
+        setTiles(data.tiles);
+      }
+      if (data.tabs) {
+        localStorage.setItem('tabs', JSON.stringify(data.tabs));
+        setTabs(data.tabs);
+        setActiveTab(data.tabs[0]?.name || '');
+      }
+      if (data.financeTiles) {
+        localStorage.setItem('financeTiles', JSON.stringify(data.financeTiles));
+        setFinanceTiles(data.financeTiles);
+      }
+      if (data.homePageTabs) {
+        localStorage.setItem('homePageTabs', JSON.stringify(data.homePageTabs));
+        setHomePageTabs(data.homePageTabs);
+        if (data.homePageTabs.length > 0) {
+          setSelectedHomePageTab(data.homePageTabs[0].id);
+        }
+      }
+      if (data.creditCards) {
+        localStorage.setItem('creditCards', JSON.stringify(data.creditCards));
+        setCreditCards(data.creditCards);
+      }
+      if (data.stockSymbols) {
+        localStorage.setItem('stockSymbols', JSON.stringify(data.stockSymbols));
+        setStockSymbols(data.stockSymbols);
+      }
+      if (data.expandedHomePageTabs) {
+        localStorage.setItem('expandedHomePageTabs', JSON.stringify(data.expandedHomePageTabs));
+        setExpandedHomePageTabs(new Set(data.expandedHomePageTabs));
+      }
+      if (data.pickedFolders) {
+        localStorage.setItem('pickedFolders', JSON.stringify(data.pickedFolders));
+        setPickedFolders(data.pickedFolders);
+      }
+      if (data.bannerTitle) {
+        localStorage.setItem('bannerTitle', data.bannerTitle);
+        setBannerTitle(data.bannerTitle);
+      }
+      if (data.lastPaymentsReminderShown) {
+        localStorage.setItem('lastPaymentsReminderShown', data.lastPaymentsReminderShown);
+      }
+      
+      setShowSimpleImportModal(false);
+      setImportTextarea('');
+      alert('Data imported successfully! The page will reload.');
+      window.location.reload();
+    } catch (error) {
+      alert('Error importing data. Make sure you pasted valid JSON: ' + error);
     }
   }
   const sensors = useSensors(
@@ -2573,6 +2633,38 @@ function App() {
               aria-label="Restore data"
             >
               ⬆️
+            </div>
+            <div
+              onClick={() => setShowSimpleImportModal(true)}
+              title="Simple Import (Paste JSON)"
+              style={{
+                background: '#4caf50',
+                color: '#fff',
+                borderRadius: '50%',
+                width: 40,
+                height: 40,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: 20,
+                boxShadow: '0 2px 8px rgba(76, 175, 80, 0.3)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#45a049';
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#4caf50';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.3)';
+              }}
+              role="button"
+              aria-label="Simple Import"
+            >
+              📋
             </div>
             <input
               type="file"
@@ -3724,6 +3816,70 @@ function App() {
                   >
                     Cancel
                   </button>
+                </div>
+              </Modal>
+            )}
+
+            {/* Simple Import Modal */}
+            {showSimpleImportModal && (
+              <Modal onClose={() => { setShowSimpleImportModal(false); setImportTextarea(''); }}>
+                <div style={{ padding: '16px 0' }}>
+                  <h2 style={{ marginBottom: 16 }}>Import Data</h2>
+                  <p style={{ marginBottom: 16, color: '#666' }}>
+                    1. Open your backup JSON file in Notepad<br/>
+                    2. Copy ALL the text (Ctrl+A, Ctrl+C)<br/>
+                    3. Paste it below and click Import
+                  </p>
+                  <textarea
+                    value={importTextarea}
+                    onChange={(e) => setImportTextarea(e.target.value)}
+                    placeholder="Paste your backup JSON here..."
+                    style={{
+                      width: '100%',
+                      height: 200,
+                      padding: 12,
+                      border: '1px solid #ddd',
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontFamily: 'monospace',
+                      marginBottom: 16,
+                      resize: 'vertical'
+                    }}
+                  />
+                  <div style={{ textAlign: 'center' }}>
+                    <button
+                      style={{
+                        background: '#4caf50',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '10px 20px',
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        marginRight: 8,
+                      }}
+                      onClick={handleSimpleImport}
+                      disabled={!importTextarea.trim()}
+                    >
+                      Import Data
+                    </button>
+                    <button
+                      style={{
+                        background: '#eee',
+                        color: '#333',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '10px 20px',
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => { setShowSimpleImportModal(false); setImportTextarea(''); }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </Modal>
             )}
