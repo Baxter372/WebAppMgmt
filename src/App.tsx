@@ -525,7 +525,6 @@ function getUpcomingPaymentsNextMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
 
 // ...START OF MAIN APP...
 function App() {
-  console.log('App component loaded!');
   // --- HomePageTabs state and handlers ---
   const [homePageTabs, setHomePageTabs] = useState<HomePageTab[]>(() => {
     const saved = localStorage.getItem('homePageTabs');
@@ -932,6 +931,7 @@ function App() {
                   title={`${tile.name} - ${tile.description}`}
                   onClick={(e) => {
                     e.stopPropagation();
+                    trackSession(tile.id, tile.name);
                   }}
                   style={{
                     textDecoration: 'none',
@@ -1071,6 +1071,49 @@ function App() {
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Active Sessions tracking
+  interface ActiveSession {
+    tileId: number;
+    tileName: string;
+    openedAt: number;
+  }
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>(() => {
+    const saved = localStorage.getItem('activeSessions');
+    if (!saved) return [];
+    const sessions = JSON.parse(saved);
+    // Filter out expired sessions (older than 8 hours)
+    const eightHoursAgo = Date.now() - (8 * 60 * 60 * 1000);
+    return sessions.filter((s: ActiveSession) => s.openedAt > eightHoursAgo);
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('activeSessions', JSON.stringify(activeSessions));
+  }, [activeSessions]);
+  
+  const trackSession = (tileId: number, tileName: string) => {
+    // Check if already active
+    if (activeSessions.some(s => s.tileId === tileId)) return;
+    
+    setActiveSessions(prev => [...prev, {
+      tileId,
+      tileName,
+      openedAt: Date.now()
+    }]);
+  };
+  
+  const closeSession = (tileId: number) => {
+    setActiveSessions(prev => prev.filter(s => s.tileId !== tileId));
+  };
+  
+  const formatSessionDuration = (openedAt: number) => {
+    const minutes = Math.floor((Date.now() - openedAt) / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
   
   // Credit Card Management State
   const [showCreditCardModal, setShowCreditCardModal] = useState(false);
@@ -1657,37 +1700,25 @@ function App() {
     URL.revokeObjectURL(url);
   }
   function handleRestoreClick() {
-    console.log('Restore button clicked');
-    console.log('fileInputRef:', fileInputRef.current);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
-      console.log('File input clicked');
-    } else {
-      console.error('fileInputRef.current is null!');
     }
   }
   function handleRestoreFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    console.log('handleRestoreFileChange called');
     const file = e.target.files?.[0];
-    console.log('File selected:', file);
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        console.log('File read, parsing JSON...');
         const data = JSON.parse(event.target?.result as string);
-        console.log('Parsed data:', data);
         if (data && (data.tiles || data.tabs)) {
-          console.log('Valid backup, showing modal');
           setRestoreData(data); // Store the entire backup data
           setShowRestoreModal(true);
         } else {
-          console.log('Invalid backup - missing tiles/tabs');
           alert('Invalid backup file.');
         }
       } catch (error) {
-        console.error('Error parsing backup:', error);
         alert('Invalid backup file.');
       }
     };
@@ -1917,7 +1948,11 @@ function App() {
         } else if (tile.link) {
           // If there's a fallback link, open it
           window.open(tile.link, '_blank');
+          trackSession(tile.id, tile.name);
         }
+      } else {
+        // Track session for web and protocol apps
+        trackSession(tile.id, tile.name);
       }
       // For 'web' and 'protocol' types, the default anchor behavior handles it
     };
@@ -2249,8 +2284,6 @@ function App() {
               display: 'block',
               backgroundColor: 'transparent',
             }}
-            onLoad={() => console.log('Logo loaded successfully!')}
-            onError={(e) => console.error('Logo failed to load:', e.currentTarget.src)}
           />
         </div>
         <nav style={{ marginTop: 32, flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -2648,10 +2681,7 @@ function App() {
               ⬆️
             </div>
             <div
-              onClick={() => {
-                console.log('Green import button clicked!');
-                setShowSimpleImportModal(true);
-              }}
+              onClick={() => setShowSimpleImportModal(true)}
               title="Simple Import (Paste JSON)"
               style={{
                 background: '#4caf50',
@@ -3032,6 +3062,99 @@ function App() {
                 flexDirection: 'column',
                 gap: 16,
               }}>
+                
+                {/* Active Sessions */}
+                <div style={{
+                  background: '#e3f2fd',
+                  padding: '16px',
+                  borderRadius: 8,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+                  border: '2px solid #1976d2',
+                }}>
+                  <h3 style={{ 
+                    margin: '0 0 12px 0', 
+                    fontSize: 16, 
+                    fontWeight: 600, 
+                    color: '#1976d2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    <span style={{ fontSize: 18 }}>🟢</span> Active Sessions ({activeSessions.length})
+                  </h3>
+                  {activeSessions.length === 0 ? (
+                    <div style={{ fontSize: 13, color: '#666', textAlign: 'center', padding: '8px 0' }}>
+                      No active sessions. Click a tile to start tracking!
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {activeSessions.map(session => {
+                        const tile = tiles.find(t => t.id === session.tileId);
+                        return (
+                          <div 
+                            key={session.tileId}
+                            style={{
+                              background: '#fff',
+                              padding: '10px 12px',
+                              borderRadius: 6,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                            }}
+                          >
+                            {tile?.logo && (
+                              <img 
+                                src={tile.logo} 
+                                alt={session.tileName}
+                                style={{ 
+                                  width: 24, 
+                                  height: 24, 
+                                  objectFit: 'contain',
+                                  flexShrink: 0,
+                                }}
+                              />
+                            )}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ 
+                                fontWeight: 600, 
+                                fontSize: 13, 
+                                color: '#333',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {session.tileName}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#666' }}>
+                                {formatSessionDuration(session.openedAt)}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => closeSession(session.tileId)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: 18,
+                                color: '#999',
+                                padding: 4,
+                                lineHeight: 1,
+                                transition: 'color 0.2s',
+                                flexShrink: 0,
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.color = '#e53935'}
+                              onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+                              title="Close session"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 
                 {/* Sidebar Title with Upcoming Payments Button */}
                 <div style={{
