@@ -1069,6 +1069,9 @@ function App() {
   // Reports menu expand state
   const [reportsExpanded, setReportsExpanded] = useState(true);
   
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  
   // Credit Card Management State
   const [showCreditCardModal, setShowCreditCardModal] = useState(false);
   const [creditCardModalMode, setCreditCardModalMode] = useState<'add' | 'edit'>('add');
@@ -2723,6 +2726,106 @@ function App() {
               )}
             </div>
             
+            {/* Search Bar */}
+            <div style={{ marginBottom: 24, maxWidth: 600 }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search for a web tile..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: 16,
+                    border: '2px solid #e0e0e0',
+                    borderRadius: 8,
+                    outline: 'none',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#1976d2'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 20,
+                      color: '#999',
+                      padding: 4,
+                    }}
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              
+              {/* Search Results */}
+              {searchQuery.trim() && (
+                <div style={{
+                  marginTop: 12,
+                  background: '#fff',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 8,
+                  maxHeight: 400,
+                  overflowY: 'auto',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                }}>
+                  {(() => {
+                    const results = tiles.filter(tile => 
+                      tile.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      tile.description.toLowerCase().includes(searchQuery.toLowerCase())
+                    );
+                    
+                    if (results.length === 0) {
+                      return (
+                        <div style={{ padding: 20, textAlign: 'center', color: '#999' }}>
+                          No tiles found matching "{searchQuery}"
+                        </div>
+                      );
+                    }
+                    
+                    return results.map(tile => (
+                      <div
+                        key={tile.id}
+                        onClick={() => {
+                          setActiveTab(tile.category);
+                          setSearchQuery('');
+                        }}
+                        style={{
+                          padding: '12px 16px',
+                          borderBottom: '1px solid #f0f0f0',
+                          cursor: 'pointer',
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                      >
+                        <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 4 }}>
+                          {tile.name}
+                        </div>
+                        <div style={{ fontSize: 14, color: '#666' }}>
+                          {tile.description}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                          Category: {tile.category}
+                          {tile.subcategory && ` • ${tile.subcategory}`}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
+            
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0 }}>Home Page</h1>
               <div style={{ display: 'flex', gap: 12 }}>
@@ -3207,6 +3310,106 @@ function App() {
               <span style={{ color: '#666', fontWeight: 500 }}>
                 {activeTab}
               </span>
+            </div>
+            
+            {/* Search Bar */}
+            <div style={{ marginBottom: 24, maxWidth: 600 }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search for a web tile..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: 16,
+                    border: '2px solid #e0e0e0',
+                    borderRadius: 8,
+                    outline: 'none',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#1976d2'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 20,
+                      color: '#999',
+                      padding: 4,
+                    }}
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              
+              {/* Search Results */}
+              {searchQuery.trim() && (
+                <div style={{
+                  marginTop: 12,
+                  background: '#fff',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 8,
+                  maxHeight: 400,
+                  overflowY: 'auto',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                }}>
+                  {(() => {
+                    const results = tiles.filter(tile => 
+                      tile.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      tile.description.toLowerCase().includes(searchQuery.toLowerCase())
+                    );
+                    
+                    if (results.length === 0) {
+                      return (
+                        <div style={{ padding: 20, textAlign: 'center', color: '#999' }}>
+                          No tiles found matching "{searchQuery}"
+                        </div>
+                      );
+                    }
+                    
+                    return results.map(tile => (
+                      <div
+                        key={tile.id}
+                        onClick={() => {
+                          setActiveTab(tile.category);
+                          setSearchQuery('');
+                        }}
+                        style={{
+                          padding: '12px 16px',
+                          borderBottom: '1px solid #f0f0f0',
+                          cursor: 'pointer',
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                      >
+                        <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 4 }}>
+                          {tile.name}
+                        </div>
+                        <div style={{ fontSize: 14, color: '#666' }}>
+                          {tile.description}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                          Category: {tile.category}
+                          {tile.subcategory && ` • ${tile.subcategory}`}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
             </div>
             
             {/* Active Tab Title Row */}
