@@ -1,10 +1,10 @@
 @echo off
-REM Bills Application Launcher
+REM WAMS Application Launcher
 REM Double-click this file to start the app!
 
 echo.
 echo ========================================
-echo   Bills Application Launcher
+echo   WAMS Application Launcher
 echo ========================================
 echo.
 

@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
+import wamsLogo from '/WAMLOGO.png';
 
 // ...MODAL COMPONENT...
 const Modal: React.FC<{ onClose: () => void, children: React.ReactNode }> = ({ onClose, children }) => (
@@ -2232,13 +2233,22 @@ function App() {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          backgroundColor: 'transparent',
         }}>
           <img
-            src="https://flagheroes.us/wp-content/uploads/2024/04/cropped-Flag-Heroes-2000-x-2000-px-260x229.png"
-            alt="Flag Heroes logo"
-            style={{ width: 48, height: 48, objectFit: 'contain', marginBottom: 8 }}
+            src={wamsLogo}
+            alt="WAMS logo"
+            style={{ 
+              maxWidth: '180px',
+              width: '100%', 
+              height: 'auto', 
+              objectFit: 'contain',
+              display: 'block',
+              backgroundColor: 'transparent',
+            }}
+            onLoad={() => console.log('Logo loaded successfully!')}
+            onError={(e) => console.error('Logo failed to load:', e.currentTarget.src)}
           />
-          Bill's Apps
         </div>
         <nav style={{ marginTop: 32, flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1 }}>
@@ -2635,7 +2645,10 @@ function App() {
               ⬆️
             </div>
             <div
-              onClick={() => setShowSimpleImportModal(true)}
+              onClick={() => {
+                console.log('Green import button clicked!');
+                setShowSimpleImportModal(true);
+              }}
               title="Simple Import (Paste JSON)"
               style={{
                 background: '#4caf50',
@@ -3736,179 +3749,6 @@ function App() {
               </SortableContext>
             </DndContext>
 
-            {/* Delete Confirmation Modal */}
-            {showDeleteModal && (
-              <Modal onClose={() => { setShowDeleteModal(false); setTileToDeleteId(null); }}>
-                <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                  <h2 style={{ marginBottom: 16 }}>Delete Tile?</h2>
-                  <p style={{ marginBottom: 24 }}>Are you sure you want to delete this tile? This action cannot be undone.</p>
-                  <button
-                    style={{
-                      background: '#e53935',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 20px',
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      marginRight: 8,
-                    }}
-                    onClick={confirmDeleteTile}
-                  >
-                    Yes, Delete
-                  </button>
-                  <button
-                    style={{
-                      background: '#eee',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 20px',
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => { setShowDeleteModal(false); setTileToDeleteId(null); }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </Modal>
-            )}
-
-            {/* Restore Confirmation Modal */}
-            {showRestoreModal && (
-              <Modal onClose={() => { setShowRestoreModal(false); setRestoreData(null); }}>
-                <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                  <h2 style={{ marginBottom: 16 }}>Restore Data?</h2>
-                  <p style={{ marginBottom: 24 }}>
-                    Are you sure you want to restore this backup? This will overwrite your current tiles and tabs.
-                  </p>
-                  <button
-                    style={{
-                      background: '#43a047',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 20px',
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      marginRight: 8,
-                    }}
-                    onClick={confirmRestore}
-                  >
-                    Yes, Restore
-                  </button>
-                  <button
-                    style={{
-                      background: '#eee',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 20px',
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => { setShowRestoreModal(false); setRestoreData(null); }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </Modal>
-            )}
-
-            {/* Simple Import Modal */}
-            {showSimpleImportModal && (
-              <Modal onClose={() => { setShowSimpleImportModal(false); setImportTextarea(''); }}>
-                <div style={{ padding: '16px 0' }}>
-                  <h2 style={{ marginBottom: 16 }}>Import Data</h2>
-                  <p style={{ marginBottom: 16, color: '#666' }}>
-                    1. Open your backup JSON file in Notepad<br/>
-                    2. Copy ALL the text (Ctrl+A, Ctrl+C)<br/>
-                    3. Paste it below and click Import
-                  </p>
-                  <textarea
-                    value={importTextarea}
-                    onChange={(e) => setImportTextarea(e.target.value)}
-                    placeholder="Paste your backup JSON here..."
-                    style={{
-                      width: '100%',
-                      height: 200,
-                      padding: 12,
-                      border: '1px solid #ddd',
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontFamily: 'monospace',
-                      marginBottom: 16,
-                      resize: 'vertical'
-                    }}
-                  />
-                  <div style={{ textAlign: 'center' }}>
-                    <button
-                      style={{
-                        background: '#4caf50',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '10px 20px',
-                        fontSize: '1rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        marginRight: 8,
-                      }}
-                      onClick={handleSimpleImport}
-                      disabled={!importTextarea.trim()}
-                    >
-                      Import Data
-                    </button>
-                    <button
-                      style={{
-                        background: '#eee',
-                        color: '#333',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '10px 20px',
-                        fontSize: '1rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => { setShowSimpleImportModal(false); setImportTextarea(''); }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </Modal>
-            )}
-
-            {/* Banner Title Edit Modal */}
-            {showBannerTitleModal && (
-              <Modal onClose={() => setShowBannerTitleModal(false)}>
-                <form onSubmit={handleBannerTitleSubmit}>
-                  <h2>Edit Banner Title</h2>
-                  <label>
-                    Banner Title:<br />
-                    <input
-                      value={bannerTitleForm}
-                      onChange={e => setBannerTitleForm(e.target.value)}
-                      required
-                      autoFocus
-                      placeholder="Enter banner title"
-                    />
-                  </label>
-                  <button type="submit">
-                    Save
-                  </button>
-                  <button type="button" onClick={() => setShowBannerTitleModal(false)}>
-                    Cancel
-                  </button>
-                </form>
-              </Modal>
-            )}
-
             {/* Upcoming Payments Modal */}
             {showUpcomingPaymentsModal && (
               <Modal onClose={() => { setShowUpcomingPaymentsModal(false); setViewingNextMonth(false); }}>
@@ -4933,6 +4773,179 @@ function App() {
         )}
 
         {/* Global Modals - Available on all pages */}
+        
+        {/* Banner Title Edit Modal */}
+        {showBannerTitleModal && (
+          <Modal onClose={() => setShowBannerTitleModal(false)}>
+            <form onSubmit={handleBannerTitleSubmit}>
+              <h2>Edit Banner Title</h2>
+              <label>
+                Banner Title:<br />
+                <input
+                  value={bannerTitleForm}
+                  onChange={e => setBannerTitleForm(e.target.value)}
+                  required
+                  autoFocus
+                  placeholder="Enter banner title"
+                />
+              </label>
+              <button type="submit">
+                Save
+              </button>
+              <button type="button" onClick={() => setShowBannerTitleModal(false)}>
+                Cancel
+              </button>
+            </form>
+          </Modal>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <Modal onClose={() => { setShowDeleteModal(false); setTileToDeleteId(null); }}>
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <h2 style={{ marginBottom: 16 }}>Delete Tile?</h2>
+              <p style={{ marginBottom: 24 }}>Are you sure you want to delete this tile? This action cannot be undone.</p>
+              <button
+                style={{
+                  background: '#e53935',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 20px',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginRight: 8,
+                }}
+                onClick={confirmDeleteTile}
+              >
+                Yes, Delete
+              </button>
+              <button
+                style={{
+                  background: '#eee',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 20px',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                onClick={() => { setShowDeleteModal(false); setTileToDeleteId(null); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {/* Restore Confirmation Modal */}
+        {showRestoreModal && (
+          <Modal onClose={() => { setShowRestoreModal(false); setRestoreData(null); }}>
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <h2 style={{ marginBottom: 16 }}>Restore Data?</h2>
+              <p style={{ marginBottom: 24 }}>
+                Are you sure you want to restore this backup? This will overwrite your current tiles and tabs.
+              </p>
+              <button
+                style={{
+                  background: '#43a047',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 20px',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginRight: 8,
+                }}
+                onClick={confirmRestore}
+              >
+                Yes, Restore
+              </button>
+              <button
+                style={{
+                  background: '#eee',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 20px',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                onClick={() => { setShowRestoreModal(false); setRestoreData(null); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {/* Simple Import Modal */}
+        {showSimpleImportModal && (
+          <Modal onClose={() => { setShowSimpleImportModal(false); setImportTextarea(''); }}>
+            <div style={{ padding: '16px 0' }}>
+              <h2 style={{ marginBottom: 16 }}>Import Data</h2>
+              <p style={{ marginBottom: 16, color: '#666' }}>
+                1. Open your backup JSON file in Notepad<br/>
+                2. Copy ALL the text (Ctrl+A, Ctrl+C)<br/>
+                3. Paste it below and click Import
+              </p>
+              <textarea
+                value={importTextarea}
+                onChange={(e) => setImportTextarea(e.target.value)}
+                placeholder="Paste your backup JSON here..."
+                style={{
+                  width: '100%',
+                  height: 200,
+                  padding: 12,
+                  border: '1px solid #ddd',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  fontFamily: 'monospace',
+                  marginBottom: 16,
+                  resize: 'vertical'
+                }}
+              />
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  style={{
+                    background: '#4caf50',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '10px 20px',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginRight: 8,
+                  }}
+                  onClick={handleSimpleImport}
+                  disabled={!importTextarea.trim()}
+                >
+                  Import Data
+                </button>
+                <button
+                  style={{
+                    background: '#eee',
+                    color: '#333',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '10px 20px',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => { setShowSimpleImportModal(false); setImportTextarea(''); }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
         
         {/* Tile Modal - Create/Edit Cards */}
         {showTileModal && (
