@@ -2787,69 +2787,15 @@ function App() {
                 </>
               )}
             </div>
-              
-              {/* Search Results */}
-              {searchQuery.trim() && (
-                <div style={{
-                  marginTop: 12,
-                  background: '#fff',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: 8,
-                  maxHeight: 400,
-                  overflowY: 'auto',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                }}>
-                  {(() => {
-                    const results = tiles.filter(tile => 
-                      tile.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      tile.description.toLowerCase().includes(searchQuery.toLowerCase())
-                    );
-                    
-                    if (results.length === 0) {
-                      return (
-                        <div style={{ padding: 20, textAlign: 'center', color: '#999' }}>
-                          No tiles found matching "{searchQuery}"
-                        </div>
-                      );
-                    }
-                    
-                    return results.map(tile => (
-                      <div
-                        key={tile.id}
-                        onClick={() => {
-                          setActiveTab(tile.category);
-                          setSearchQuery('');
-                        }}
-                        style={{
-                          padding: '12px 16px',
-                          borderBottom: '1px solid #f0f0f0',
-                          cursor: 'pointer',
-                          transition: 'background 0.2s',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                      >
-                        <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 4 }}>
-                          {tile.name}
-                        </div>
-                        <div style={{ fontSize: 14, color: '#666' }}>
-                          {tile.description}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-                          Category: {tile.category}
-                          {tile.subcategory && ` • ${tile.subcategory}`}
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              )}
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 16 }}>
               <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0, flexShrink: 0 }}>Home Page</h1>
               
+              {/* Spacer to push search to the right */}
+              <div style={{ flex: 1 }} />
+              
               {/* Search Bar */}
-              <div style={{ position: 'relative', maxWidth: 350, flex: 1 }}>
+              <div style={{ position: 'relative', width: 220, flexShrink: 0, marginRight: 40 }}>
                 <input
                   type="text"
                   placeholder="🔍 Search for a web tile..."
@@ -2886,6 +2832,64 @@ function App() {
                   >
                     ✕
                   </button>
+                )}
+                
+                {/* Search Results Dropdown */}
+                {searchQuery.trim() && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: 4,
+                    background: '#fff',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 8,
+                    maxHeight: 300,
+                    overflowY: 'auto',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    zIndex: 100,
+                  }}>
+                    {(() => {
+                      const results = tiles.filter(tile => 
+                        tile.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        tile.description.toLowerCase().includes(searchQuery.toLowerCase())
+                      );
+                      
+                      if (results.length === 0) {
+                        return (
+                          <div style={{ padding: 16, textAlign: 'center', color: '#999', fontSize: 13 }}>
+                            No tiles found
+                          </div>
+                        );
+                      }
+                      
+                      return results.slice(0, 8).map(tile => (
+                        <div
+                          key={tile.id}
+                          onClick={() => {
+                            setActiveTab(tile.category);
+                            setSearchQuery('');
+                          }}
+                          style={{
+                            padding: '10px 12px',
+                            borderBottom: '1px solid #f0f0f0',
+                            cursor: 'pointer',
+                            transition: 'background 0.2s',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                        >
+                          <div style={{ fontWeight: 600, color: '#1976d2', fontSize: 13 }}>
+                            {tile.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                            {tile.category}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
                 )}
               </div>
               
