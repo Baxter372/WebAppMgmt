@@ -2756,86 +2756,36 @@ function App() {
         {/* HOME PAGE */}
         {mainMenu === 'home' && activeTab === '' && (
           <div style={{ padding: '24px 24px', maxWidth: '100%', overflow: 'hidden' }}>
-            {/* Breadcrumb + Search Bar Row */}
+            {/* Breadcrumb Navigation */}
             <div style={{ 
+              fontSize: 14, 
+              color: '#666',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              marginBottom: 16,
+              gap: 8,
+              marginBottom: 8,
             }}>
-              {/* Breadcrumb Navigation */}
-              <div style={{ 
-                fontSize: 14, 
-                color: '#666',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                flexShrink: 0,
-              }}>
-                <span 
-                  onClick={() => { setMainMenu('home'); setActiveTab(''); }}
-                  style={{ 
-                    color: '#1976d2', 
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                    transition: 'color 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = '#1565c0'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = '#1976d2'}
-                >
-                  🏠 Home
-                </span>
-                {selectedHomePageTab !== 'all' && (
-                  <>
-                    <span style={{ color: '#ccc' }}>/</span>
-                    <span style={{ color: '#666', fontWeight: 500 }}>
-                      {homePageTabs.find(hpt => hpt.id === selectedHomePageTab)?.name || 'All Web Tiles'}
-                    </span>
-                  </>
-                )}
-              </div>
-              
-              {/* Search Bar */}
-              <div style={{ position: 'relative', maxWidth: 400, flex: 1 }}>
-                <input
-                  type="text"
-                  placeholder="🔍 Search for a web tile..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 14px',
-                    fontSize: 14,
-                    border: '2px solid #e0e0e0',
-                    borderRadius: 8,
-                    outline: 'none',
-                    transition: 'border-color 0.2s',
-                  }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#1976d2'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    style={{
-                      position: 'absolute',
-                      right: 10,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: 16,
-                      color: '#999',
-                      padding: 2,
-                    }}
-                    title="Clear search"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
+              <span 
+                onClick={() => { setMainMenu('home'); setActiveTab(''); }}
+                style={{ 
+                  color: '#1976d2', 
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  transition: 'color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#1565c0'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#1976d2'}
+              >
+                🏠 Home
+              </span>
+              {selectedHomePageTab !== 'all' && (
+                <>
+                  <span style={{ color: '#ccc' }}>/</span>
+                  <span style={{ color: '#666', fontWeight: 500 }}>
+                    {homePageTabs.find(hpt => hpt.id === selectedHomePageTab)?.name || 'All Web Tiles'}
+                  </span>
+                </>
+              )}
             </div>
               
               {/* Search Results */}
@@ -2895,9 +2845,51 @@ function App() {
                 </div>
               )}
             
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0 }}>Home Page</h1>
-              <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 16 }}>
+              <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0, flexShrink: 0 }}>Home Page</h1>
+              
+              {/* Search Bar */}
+              <div style={{ position: 'relative', maxWidth: 350, flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search for a web tile..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 14px',
+                    fontSize: 14,
+                    border: '2px solid #e0e0e0',
+                    borderRadius: 8,
+                    outline: 'none',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#1976d2'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 16,
+                      color: '#999',
+                      padding: 2,
+                    }}
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              
+              <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
                 <button
                   onClick={() => {
                     setShowTabModal(true);
