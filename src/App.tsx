@@ -413,6 +413,30 @@ function exportToExcel(data: string[][], filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// Check if a tile's payment is due within a certain number of days
+function isPaymentDueSoon(
+  tile: Tile,
+  daysThreshold: number = 5
+): boolean {
+  if (!tile.paidSubscription || !tile.signupDate || !tile.paymentFrequency) {
+    return false;
+  }
+  
+  const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, tile.paymentFrequency, tile.annualType);
+  if (!nextPaymentDateStr) return false;
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const nextPaymentDate = new Date(nextPaymentDateStr);
+  nextPaymentDate.setHours(0, 0, 0, 0);
+  
+  const diffTime = nextPaymentDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays >= 0 && diffDays <= daysThreshold;
+}
+
 // Calculate next payment date based on signup date and frequency
 function calculateNextPaymentDate(
   signupDate: string | null | undefined,
@@ -921,14 +945,15 @@ function App() {
             justifyContent: 'flex-start',
             padding: '8px 0'
           }}>
-            {tabTiles.slice(0, 24).map((tile) => (
-              tile.logo && (
+            {tabTiles.slice(0, 24).map((tile) => {
+              const paymentDueSoon = isPaymentDueSoon(tile, 5);
+              return tile.logo && (
                 <a
                   key={tile.id}
                   href={tile.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title={`${tile.name} - ${tile.description}`}
+                  title={`${tile.name}${tile.description ? ` - ${tile.description}` : ''}${tile.paidSubscription && tile.paymentAmount ? `\n💰 ${formatCurrency(tile.paymentAmount)}/${tile.paymentFrequency === 'Monthly' ? 'mo' : 'yr'}` : ''}${paymentDueSoon ? '\n⚠️ Payment due soon!' : ''}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     trackSession(tile.id, tile.name);
@@ -942,6 +967,7 @@ function App() {
                   <img
                     src={tile.logo}
                     alt={tile.name}
+                    className={paymentDueSoon ? 'home-card-payment-due' : ''}
                     style={{
                       width: 40,
                       height: 40,
@@ -949,24 +975,27 @@ function App() {
                       borderRadius: 6,
                       background: '#f9f9f9',
                       padding: 4,
-                      border: '1px solid #e0e0e0',
+                      border: paymentDueSoon ? '2px solid #ff9800' : '1px solid #e0e0e0',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
+                      animation: paymentDueSoon ? 'homeCardGlow 2s ease-in-out infinite' : 'none',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = 'scale(1.15)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(25, 118, 210, 0.3)';
-                      e.currentTarget.style.borderColor = '#1976d2';
+                      e.currentTarget.style.boxShadow = paymentDueSoon 
+                        ? '0 0 12px 4px rgba(255, 152, 0, 0.6)' 
+                        : '0 2px 8px rgba(25, 118, 210, 0.3)';
+                      e.currentTarget.style.borderColor = paymentDueSoon ? '#ff9800' : '#1976d2';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.boxShadow = 'none';
-                      e.currentTarget.style.borderColor = '#e0e0e0';
+                      e.currentTarget.style.boxShadow = paymentDueSoon ? '' : 'none';
+                      e.currentTarget.style.borderColor = paymentDueSoon ? '#ff9800' : '#e0e0e0';
                     }}
                   />
                 </a>
-              )
-            ))}
+              );
+            })}
             {tabTiles.length > 24 && (
               <div style={{
                 width: 40,
@@ -1957,9 +1986,12 @@ function App() {
       // For 'web' and 'protocol' types, the default anchor behavior handles it
     };
     
+    // Check if payment is due within 5 days
+    const paymentDueSoon = isPaymentDueSoon(tile, 5);
+    
     return (
       <a
-        className="tile"
+        className={`tile${paymentDueSoon ? ' payment-due-soon' : ''}`}
         href={tile.appType === 'local' && !tile.link ? '#' : tile.link}
         target="_blank"
         rel="noopener noreferrer"
@@ -1974,7 +2006,7 @@ function App() {
           transition,
           boxShadow: isDragging
             ? '0 8px 32px #1976d244'
-            : '0 2px 16px #0002',
+            : undefined, // Let CSS handle the box-shadow for glow effect
           zIndex: isDragging ? 100 : undefined,
           cursor: 'pointer',
         }}
