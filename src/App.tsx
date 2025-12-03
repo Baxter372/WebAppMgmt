@@ -3097,7 +3097,42 @@ function App() {
                 flexDirection: 'column',
                 gap: 16,
               }}>
-                
+                {(() => {
+                  // Filter tiles based on selected home page tab
+                  const filteredTiles = selectedHomePageTab === 'all' 
+                    ? tiles 
+                    : tiles.filter(tile => {
+                        const tab = tabs.find(t => t.name === tile.category);
+                        return tab && (tab.homePageTabId === selectedHomePageTab || !tab.homePageTabId);
+                      });
+                  
+                  // Get filtered upcoming payments
+                  const filteredUpcomingPayments = getUpcomingPaymentsThisMonth(filteredTiles);
+                  const today = new Date();
+                  const monthName = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                  const totalPaymentAmount = filteredUpcomingPayments.reduce((sum, p) => sum + (p.tile.paymentAmount || 0), 0);
+                  
+                  // Calculate stats
+                  const totalApps = filteredTiles.length;
+                  const monthlySpend = filteredTiles.reduce((sum, t) => 
+                    sum + (t.paymentFrequency === 'Monthly' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
+                  );
+                  const annualSpend = filteredTiles.reduce((sum, t) => 
+                    sum + (t.paymentFrequency === 'Annually' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
+                  );
+                  
+                  // Filter active sessions for selected tab
+                  const filteredSessions = selectedHomePageTab === 'all'
+                    ? activeSessions
+                    : activeSessions.filter(session => {
+                        const tile = tiles.find(t => t.id === session.tileId);
+                        if (!tile) return false;
+                        const tab = tabs.find(t => t.name === tile.category);
+                        return tab && (tab.homePageTabId === selectedHomePageTab || !tab.homePageTabId);
+                      });
+                  
+                  return (
+                    <>
                 {/* Active Sessions */}
                 <div style={{
                   background: '#e3f2fd',
@@ -3115,15 +3150,15 @@ function App() {
                     alignItems: 'center',
                     gap: 8,
                   }}>
-                    <span style={{ fontSize: 18 }}>🟢</span> Active Sessions ({activeSessions.length})
+                    <span style={{ fontSize: 18 }}>🟢</span> Active Sessions ({filteredSessions.length})
                   </h3>
-                  {activeSessions.length === 0 ? (
+                  {filteredSessions.length === 0 ? (
                     <div style={{ fontSize: 13, color: '#666', textAlign: 'center', padding: '8px 0' }}>
                       No active sessions. Click a tile to start tracking!
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {activeSessions.map(session => {
+                      {filteredSessions.map(session => {
                         const tile = tiles.find(t => t.id === session.tileId);
                         return (
                           <div 
@@ -3199,14 +3234,6 @@ function App() {
                   boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                   border: '1px solid #e0e0e0',
                 }}>
-                  {(() => {
-                    const upcomingPayments = getUpcomingPaymentsThisMonth(tiles);
-                    const today = new Date();
-                    const monthName = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                    const totalAmount = upcomingPayments.reduce((sum, p) => sum + (p.tile.paymentAmount || 0), 0);
-                    
-                    return (
-                      <>
                         <div style={{ 
                           display: 'flex', 
                           alignItems: 'center', 
@@ -3220,7 +3247,7 @@ function App() {
                               💳 {monthName}
                             </h3>
                             <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                              {upcomingPayments.length} payment{upcomingPayments.length !== 1 ? 's' : ''} due
+                              {filteredUpcomingPayments.length} payment{filteredUpcomingPayments.length !== 1 ? 's' : ''} due
                             </div>
                           </div>
                           <div style={{ 
@@ -3228,11 +3255,11 @@ function App() {
                             fontWeight: 700, 
                             color: '#ff9800',
                           }}>
-                            {formatCurrency(totalAmount)}
+                            {formatCurrency(totalPaymentAmount)}
                           </div>
                         </div>
                         
-                        {upcomingPayments.length === 0 ? (
+                        {filteredUpcomingPayments.length === 0 ? (
                           <div style={{ textAlign: 'center', padding: '20px 0', color: '#999', fontSize: 14 }}>
                             ✅ No payments due this month
                           </div>
@@ -3244,7 +3271,7 @@ function App() {
                             maxHeight: 600,
                             overflowY: 'auto',
                           }}>
-                            {upcomingPayments.map(({ tile, nextPaymentDate }) => {
+                            {filteredUpcomingPayments.map(({ tile, nextPaymentDate }) => {
                               const paymentDueSoon = isPaymentDueSoon(tile, 5);
                               const paymentDate = new Date(nextPaymentDate);
                               const dayOfMonth = paymentDate.getDate();
@@ -3308,9 +3335,6 @@ function App() {
                             })}
                           </div>
                         )}
-                      </>
-                    );
-                  })()}
                 </div>
 
                 {/* Total Apps Card */}
@@ -3339,7 +3363,7 @@ function App() {
                   <div style={{ fontSize: 32 }}>📱</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Total Apps</div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: '#333' }}>{tiles.length}</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#333' }}>{totalApps}</div>
                   </div>
                 </div>
 
@@ -3370,9 +3394,7 @@ function App() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Monthly Spend</div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: '#333' }}>
-                      {formatCurrency(tiles.reduce((sum, t) => 
-                        sum + (t.paymentFrequency === 'Monthly' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
-                      ))}
+                      {formatCurrency(monthlySpend)}
                     </div>
                   </div>
                 </div>
@@ -3404,13 +3426,14 @@ function App() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Annual Spend</div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: '#333' }}>
-                      {formatCurrency(tiles.reduce((sum, t) => 
-                        sum + (t.paymentFrequency === 'Annually' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
-                      ))}
+                      {formatCurrency(annualSpend)}
                     </div>
                   </div>
                 </div>
 
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
