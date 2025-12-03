@@ -2755,42 +2755,49 @@ function App() {
         </div>
         {/* HOME PAGE */}
         {mainMenu === 'home' && activeTab === '' && (
-          <div style={{ padding: '32px 24px', maxWidth: '100%', overflow: 'hidden' }}>
-            {/* Breadcrumb Navigation */}
+          <div style={{ padding: '24px 24px', maxWidth: '100%', overflow: 'hidden' }}>
+            {/* Breadcrumb + Search Bar Row */}
             <div style={{ 
-              marginBottom: 16, 
-              fontSize: 14, 
-              color: '#666',
               display: 'flex',
               alignItems: 'center',
-              gap: 8
+              justifyContent: 'space-between',
+              gap: 16,
+              marginBottom: 16,
             }}>
-              <span 
-                onClick={() => { setMainMenu('home'); setActiveTab(''); }}
-                style={{ 
-                  color: '#1976d2', 
-                  cursor: 'pointer',
-                  fontWeight: 500,
-                  transition: 'color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#1565c0'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#1976d2'}
-              >
-                🏠 Home
-              </span>
-              {selectedHomePageTab !== 'all' && (
-                <>
-                  <span style={{ color: '#ccc' }}>/</span>
-                  <span style={{ color: '#666', fontWeight: 500 }}>
-                    {homePageTabs.find(hpt => hpt.id === selectedHomePageTab)?.name || 'All Web Tiles'}
-                  </span>
-                </>
-              )}
-            </div>
-            
-            {/* Search Bar */}
-            <div style={{ marginBottom: 24, maxWidth: 600 }}>
-              <div style={{ position: 'relative' }}>
+              {/* Breadcrumb Navigation */}
+              <div style={{ 
+                fontSize: 14, 
+                color: '#666',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexShrink: 0,
+              }}>
+                <span 
+                  onClick={() => { setMainMenu('home'); setActiveTab(''); }}
+                  style={{ 
+                    color: '#1976d2', 
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    transition: 'color 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#1565c0'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#1976d2'}
+                >
+                  🏠 Home
+                </span>
+                {selectedHomePageTab !== 'all' && (
+                  <>
+                    <span style={{ color: '#ccc' }}>/</span>
+                    <span style={{ color: '#666', fontWeight: 500 }}>
+                      {homePageTabs.find(hpt => hpt.id === selectedHomePageTab)?.name || 'All Web Tiles'}
+                    </span>
+                  </>
+                )}
+              </div>
+              
+              {/* Search Bar */}
+              <div style={{ position: 'relative', maxWidth: 400, flex: 1 }}>
                 <input
                   type="text"
                   placeholder="🔍 Search for a web tile..."
@@ -2798,8 +2805,8 @@ function App() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '12px 16px',
-                    fontSize: 16,
+                    padding: '8px 14px',
+                    fontSize: 14,
                     border: '2px solid #e0e0e0',
                     borderRadius: 8,
                     outline: 'none',
@@ -2813,15 +2820,15 @@ function App() {
                     onClick={() => setSearchQuery('')}
                     style={{
                       position: 'absolute',
-                      right: 12,
+                      right: 10,
                       top: '50%',
                       transform: 'translateY(-50%)',
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      fontSize: 20,
+                      fontSize: 16,
                       color: '#999',
-                      padding: 4,
+                      padding: 2,
                     }}
                     title="Clear search"
                   >
@@ -2829,6 +2836,7 @@ function App() {
                   </button>
                 )}
               </div>
+            </div>
               
               {/* Search Results */}
               {searchQuery.trim() && (
@@ -2886,7 +2894,6 @@ function App() {
                   })()}
                 </div>
               )}
-            </div>
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0 }}>Home Page</h1>
@@ -3188,50 +3195,7 @@ function App() {
                   )}
                 </div>
                 
-                {/* Sidebar Title with Upcoming Payments Button */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 0,
-                }}>
-                  <h2 style={{ 
-                    margin: 0, 
-                    fontSize: 20, 
-                    fontWeight: 700, 
-                    color: '#1976d2' 
-                  }}>
-                    Spending Summary
-                  </h2>
-                  <button
-                    onClick={() => setShowUpcomingPaymentsModal(true)}
-                    style={{
-                      background: '#1976d2',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '6px 12px',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      transition: 'all 0.2s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#1565c0';
-                      e.currentTarget.style.transform = 'scale(1.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#1976d2';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                    title="View upcoming payments"
-                  >
-                    💳 Payments
-                  </button>
-                </div>
-                
-                {/* Pie Chart - Category Breakdown */}
+                {/* This Month's Payments */}
                 <div style={{
                   background: '#f5f5f5',
                   padding: '20px',
@@ -3239,97 +3203,116 @@ function App() {
                   boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                   border: '1px solid #e0e0e0',
                 }}>
-                  <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: '#333' }}>
-                    📊 Spending by Category
-                  </h3>
                   {(() => {
-                    // Calculate spending by category (only paid subscriptions)
-                    const categoryTotals: Record<string, number> = {};
-                    tiles.forEach(tile => {
-                      // Only include tiles with paid subscriptions and valid payment amounts
-                      if (tile.paidSubscription && tile.paymentAmount && typeof tile.paymentAmount === 'number') {
-                        const category = tile.category || 'Uncategorized';
-                        const amount = tile.paymentAmount;
-                        categoryTotals[category] = (categoryTotals[category] || 0) + amount;
-                      }
-                    });
-
-                    const sortedCategories = Object.entries(categoryTotals)
-                      .sort((a, b) => b[1] - a[1])
-                      .slice(0, 5); // Top 5 categories
-
-                    const total = sortedCategories.reduce((sum, [_, amt]) => sum + amt, 0);
+                    const upcomingPayments = getUpcomingPaymentsThisMonth(tiles);
+                    const today = new Date();
+                    const monthName = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                    const totalAmount = upcomingPayments.reduce((sum, p) => sum + (p.tile.paymentAmount || 0), 0);
                     
-                    // Simple color palette
-                    const colors = ['#1976d2', '#4caf50', '#ff9800', '#e91e63', '#9c27b0'];
-
-                    if (total === 0) {
-                      return (
-                        <div style={{ textAlign: 'center', padding: '20px', color: '#999', fontSize: 14 }}>
-                          No payment data available
-                        </div>
-                      );
-                    }
-
                     return (
-                      <div>
-                        {/* Simple SVG Pie Chart */}
-                        <svg viewBox="0 0 200 200" style={{ width: '100%', height: 'auto', marginBottom: 16 }}>
-                          {(() => {
-                            let currentAngle = -90; // Start from top
-                            return sortedCategories.map(([category, amount], idx) => {
-                              const percentage = (amount / total) * 100;
-                              const angle = (percentage / 100) * 360;
-                              const startAngle = currentAngle;
-                              const endAngle = currentAngle + angle;
-                              currentAngle = endAngle;
-
-                              // Calculate arc path
-                              const startRad = (startAngle * Math.PI) / 180;
-                              const endRad = (endAngle * Math.PI) / 180;
-                              const x1 = 100 + 80 * Math.cos(startRad);
-                              const y1 = 100 + 80 * Math.sin(startRad);
-                              const x2 = 100 + 80 * Math.cos(endRad);
-                              const y2 = 100 + 80 * Math.sin(endRad);
-                              const largeArc = angle > 180 ? 1 : 0;
-
-                              return (
-                                <path
-                                  key={category}
-                                  d={`M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArc} 1 ${x2} ${y2} Z`}
-                                  fill={colors[idx % colors.length]}
-                                  stroke="#fff"
-                                  strokeWidth="2"
-                                />
-                              );
-                            });
-                          })()}
-                        </svg>
-
-                        {/* Legend */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {sortedCategories.map(([category, amount], idx) => {
-                            const percentage = ((amount / total) * 100).toFixed(1);
-                            return (
-                              <div key={category} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                                <div style={{ 
-                                  width: 12, 
-                                  height: 12, 
-                                  borderRadius: 2, 
-                                  background: colors[idx % colors.length],
-                                  flexShrink: 0,
-                                }} />
-                                <div style={{ flex: 1, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {category}
-                                </div>
-                                <div style={{ fontWeight: 600, color: '#333' }}>
-                                  {percentage}%
-                                </div>
-                              </div>
-                            );
-                          })}
+                      <>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          marginBottom: 16,
+                          paddingBottom: 12,
+                          borderBottom: '1px solid #e0e0e0',
+                        }}>
+                          <div>
+                            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#333' }}>
+                              💳 {monthName}
+                            </h3>
+                            <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                              {upcomingPayments.length} payment{upcomingPayments.length !== 1 ? 's' : ''} due
+                            </div>
+                          </div>
+                          <div style={{ 
+                            fontSize: 20, 
+                            fontWeight: 700, 
+                            color: '#ff9800',
+                          }}>
+                            {formatCurrency(totalAmount)}
+                          </div>
                         </div>
-                      </div>
+                        
+                        {upcomingPayments.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '20px 0', color: '#999', fontSize: 14 }}>
+                            ✅ No payments due this month
+                          </div>
+                        ) : (
+                          <div style={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: 8,
+                            maxHeight: 600,
+                            overflowY: 'auto',
+                          }}>
+                            {upcomingPayments.map(({ tile, nextPaymentDate }) => {
+                              const paymentDueSoon = isPaymentDueSoon(tile, 5);
+                              const paymentDate = new Date(nextPaymentDate);
+                              const dayOfMonth = paymentDate.getDate();
+                              const dayName = paymentDate.toLocaleDateString('en-US', { weekday: 'short' });
+                              
+                              return (
+                                <div
+                                  key={tile.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 12,
+                                    padding: '10px 12px',
+                                    background: paymentDueSoon ? '#fff8e1' : '#fff',
+                                    borderRadius: 6,
+                                    border: paymentDueSoon ? '1px solid #ff9800' : '1px solid #e0e0e0',
+                                    boxShadow: paymentDueSoon ? '0 0 8px rgba(255, 152, 0, 0.2)' : 'none',
+                                  }}
+                                >
+                                  {/* Date Column */}
+                                  <div style={{
+                                    minWidth: 44,
+                                    textAlign: 'center',
+                                    padding: '4px 0',
+                                    background: paymentDueSoon ? '#ff9800' : '#1976d2',
+                                    borderRadius: 4,
+                                    color: '#fff',
+                                  }}>
+                                    <div style={{ fontSize: 10, fontWeight: 500, opacity: 0.9 }}>{dayName}</div>
+                                    <div style={{ fontSize: 16, fontWeight: 700 }}>{dayOfMonth}</div>
+                                  </div>
+                                  
+                                  {/* App Info */}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ 
+                                      fontWeight: 600, 
+                                      fontSize: 14, 
+                                      color: '#333',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                    }}>
+                                      {tile.name}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#999' }}>
+                                      {tile.category}
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Amount */}
+                                  <div style={{ 
+                                    fontWeight: 700, 
+                                    fontSize: 14, 
+                                    color: paymentDueSoon ? '#ff9800' : '#333',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {formatCurrency(tile.paymentAmount)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
                 </div>
