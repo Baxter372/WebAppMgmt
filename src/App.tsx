@@ -52,10 +52,32 @@ type Tile = {
   creditCardName?: string | null;
   accountLink?: string | null;
   notes?: string;
+  // Budget fields
+  isWebLinkOnly?: boolean;
+  budgetType?: 'Bill' | 'Subscription' | 'Expense' | 'Savings' | null;
+  budgetAmount?: number | null;
+  budgetPeriod?: 'Monthly' | 'Annually' | null;
+  budgetHistory?: {
+    [yearMonth: string]: {
+      budget: number;
+      actual: number;
+      paidDate?: string;
+      notes?: string;
+    }
+  };
 };
 type HomePageTab = { id: string; name: string; };
 type Tab = { name: string; subcategories?: string[]; hasStockTicker?: boolean; homePageTabId?: string; };
-type CreditCard = { id: string; name: string; last4: string; };
+type PaymentMethodType = 'Credit Card' | 'ACH' | 'Check' | 'Cash';
+type CreditCard = { 
+  id: string; 
+  name: string; 
+  last4: string;
+  methodType?: PaymentMethodType;
+  bankName?: string;  // For ACH and Check
+  accountType?: 'Checking' | 'Savings';  // For ACH
+  routingLast4?: string;  // For ACH - last 4 of routing number
+};
 type FinanceChild = { amount: number; date: string; };
 type FinanceTile = { id: number; name: string; description: string; children: FinanceChild[]; };
 
@@ -578,7 +600,20 @@ function App() {
   });
   const [tiles, setTiles] = useState<Tile[]>(() => {
     const saved = localStorage.getItem('tiles');
-    return saved ? JSON.parse(saved) : initialTiles;
+    if (saved) {
+      // Fix any floating point precision issues in saved monetary values
+      const parsed = JSON.parse(saved);
+      return parsed.map((tile: Tile) => ({
+        ...tile,
+        budgetAmount: tile.budgetAmount !== null && tile.budgetAmount !== undefined 
+          ? Math.round(tile.budgetAmount * 100) / 100 
+          : null,
+        paymentAmount: tile.paymentAmount !== null && tile.paymentAmount !== undefined 
+          ? Math.round(tile.paymentAmount * 100) / 100 
+          : null,
+      }));
+    }
+    return initialTiles;
   });
 
   useEffect(() => {
@@ -947,53 +982,127 @@ function App() {
           }}>
             {tabTiles.slice(0, 24).map((tile) => {
               const paymentDueSoon = isPaymentDueSoon(tile, 5);
+              // Budget type color for home page cards
+              const getBudgetColor = () => {
+                if (tile.isWebLinkOnly) return '#9E9E9E'; // Medium Grey
+                switch (tile.budgetType) {
+                  case 'Bill': return '#4169E1'; // Royal Blue
+                  case 'Subscription': return '#87CEEB'; // Light Blue
+                  case 'Expense': return '#FF6B6B'; // Light Red
+                  case 'Savings': return '#4CAF50'; // Green
+                  default: return null;
+                }
+              };
+              const budgetColor = getBudgetColor();
+              const budgetTypeLabel = tile.isWebLinkOnly ? 'Web Link Only' : tile.budgetType;
+              
               return tile.logo && (
-                <a
+                <div
                   key={tile.id}
-                  href={tile.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={`${tile.name}${tile.description ? ` - ${tile.description}` : ''}${tile.paidSubscription && tile.paymentAmount ? `\n💰 ${formatCurrency(tile.paymentAmount)}/${tile.paymentFrequency === 'Monthly' ? 'mo' : 'yr'}` : ''}${paymentDueSoon ? '\n⚠️ Payment due soon!' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    trackSession(tile.id, tile.name);
-                  }}
                   style={{
-                    textDecoration: 'none',
-                    display: 'block',
+                    position: 'relative',
                     flexShrink: 0,
                   }}
+                  className="home-card-wrapper"
                 >
-                  <img
-                    src={tile.logo}
-                    alt={tile.name}
-                    className={paymentDueSoon ? 'home-card-payment-due' : ''}
+                  <a
+                    href={tile.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`${tile.name}${tile.description ? ` - ${tile.description}` : ''}${budgetTypeLabel ? `\n📊 ${budgetTypeLabel}` : ''}${tile.budgetAmount ? ` - ${formatCurrency(tile.budgetAmount)}/${tile.budgetPeriod === 'Monthly' ? 'mo' : 'yr'}` : ''}${paymentDueSoon ? '\n⚠️ Payment due soon!' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trackSession(tile.id, tile.name);
+                    }}
                     style={{
-                      width: 40,
-                      height: 40,
-                      objectFit: 'contain',
-                      borderRadius: 6,
-                      background: '#f9f9f9',
-                      padding: 4,
-                      border: paymentDueSoon ? '2px solid #ff9800' : '1px solid #e0e0e0',
+                      textDecoration: 'none',
+                      display: 'block',
+                    }}
+                  >
+                    <img
+                      src={tile.logo}
+                      alt={tile.name}
+                      className={paymentDueSoon ? 'home-card-payment-due' : ''}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        background: '#f9f9f9',
+                        padding: 4,
+                        border: paymentDueSoon ? '2px solid #ff9800' : '1px solid #e0e0e0',
+                        borderTop: budgetColor ? `3px solid ${budgetColor}` : undefined,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        animation: paymentDueSoon ? 'homeCardGlow 2s ease-in-out infinite' : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.15)';
+                        e.currentTarget.style.boxShadow = paymentDueSoon 
+                          ? '0 0 12px 4px rgba(255, 152, 0, 0.6)' 
+                          : '0 2px 8px rgba(25, 118, 210, 0.3)';
+                        // Set border colors but preserve the budget type top color
+                        const hoverBorderColor = paymentDueSoon ? '#ff9800' : '#1976d2';
+                        e.currentTarget.style.borderLeftColor = hoverBorderColor;
+                        e.currentTarget.style.borderRightColor = hoverBorderColor;
+                        e.currentTarget.style.borderBottomColor = hoverBorderColor;
+                        // Keep the top border color for budget type
+                        if (budgetColor) {
+                          e.currentTarget.style.borderTopColor = budgetColor;
+                        } else {
+                          e.currentTarget.style.borderTopColor = hoverBorderColor;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = paymentDueSoon ? '' : 'none';
+                        // Reset border colors but preserve the budget type top color
+                        const defaultBorderColor = paymentDueSoon ? '#ff9800' : '#e0e0e0';
+                        e.currentTarget.style.borderLeftColor = defaultBorderColor;
+                        e.currentTarget.style.borderRightColor = defaultBorderColor;
+                        e.currentTarget.style.borderBottomColor = defaultBorderColor;
+                        // Keep the top border color for budget type
+                        if (budgetColor) {
+                          e.currentTarget.style.borderTopColor = budgetColor;
+                        } else {
+                          e.currentTarget.style.borderTopColor = defaultBorderColor;
+                        }
+                      }}
+                    />
+                  </a>
+                  {/* Edit button - appears on hover via CSS */}
+                  <button
+                    className="home-card-edit-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleEditTile(tile.id);
+                    }}
+                    title="Edit card"
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: '#1976d2',
+                      color: '#fff',
+                      fontSize: 10,
                       cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      animation: paymentDueSoon ? 'homeCardGlow 2s ease-in-out infinite' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0,
+                      transition: 'opacity 0.2s ease, transform 0.2s ease',
+                      zIndex: 10,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'scale(1.15)';
-                      e.currentTarget.style.boxShadow = paymentDueSoon 
-                        ? '0 0 12px 4px rgba(255, 152, 0, 0.6)' 
-                        : '0 2px 8px rgba(25, 118, 210, 0.3)';
-                      e.currentTarget.style.borderColor = paymentDueSoon ? '#ff9800' : '#1976d2';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.boxShadow = paymentDueSoon ? '' : 'none';
-                      e.currentTarget.style.borderColor = paymentDueSoon ? '#ff9800' : '#e0e0e0';
-                    }}
-                  />
-                </a>
+                  >
+                    ✏️
+                  </button>
+                </div>
               );
             })}
             {tabTiles.length > 24 && (
@@ -1044,6 +1153,11 @@ function App() {
     creditCardName: '',
     accountLink: '',
     notes: '',
+    // Budget fields
+    isWebLinkOnly: false,
+    budgetType: null,
+    budgetAmount: null,
+    budgetPeriod: null,
   });
   const [editTileId, setEditTileId] = useState<number | null>(null);
   const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
@@ -1144,10 +1258,24 @@ function App() {
     return `${Math.floor(hours / 24)}d ago`;
   };
   
-  // Credit Card Management State
+  // Payment Method Management State (formerly Credit Card)
   const [showCreditCardModal, setShowCreditCardModal] = useState(false);
   const [creditCardModalMode, setCreditCardModalMode] = useState<'add' | 'edit'>('add');
-  const [creditCardForm, setCreditCardForm] = useState({ name: '', last4: '' });
+  const [creditCardForm, setCreditCardForm] = useState<{
+    name: string;
+    last4: string;
+    methodType: PaymentMethodType;
+    bankName: string;
+    accountType: 'Checking' | 'Savings';
+    routingLast4: string;
+  }>({ 
+    name: '', 
+    last4: '', 
+    methodType: 'Credit Card',
+    bankName: '',
+    accountType: 'Checking',
+    routingLast4: '',
+  });
   const [editingCreditCardId, setEditingCreditCardId] = useState<string | null>(null);
   
   // Sort function for APP Report
@@ -1296,6 +1424,11 @@ function App() {
       creditCardName: tile.creditCardName || '',
       accountLink: tile.accountLink || '',
       notes: tile.notes || '',
+      // Budget fields
+      isWebLinkOnly: tile.isWebLinkOnly || false,
+      budgetType: tile.budgetType || null,
+      budgetAmount: tile.budgetAmount || null,
+      budgetPeriod: tile.budgetPeriod || null,
     });
   };
   const handleDeleteTile = (tileId: number) => {
@@ -1326,16 +1459,26 @@ function App() {
   };
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Fix floating point precision for monetary values
+    const fixedForm = {
+      ...form,
+      budgetAmount: form.budgetAmount !== null && form.budgetAmount !== undefined 
+        ? Math.round(form.budgetAmount * 100) / 100 
+        : null,
+      paymentAmount: form.paymentAmount !== null && form.paymentAmount !== undefined 
+        ? Math.round(form.paymentAmount * 100) / 100 
+        : null,
+    };
     if (editTileId !== null) {
       setTiles(tiles =>
         tiles.map(t =>
           t.id === editTileId
-            ? { ...t, ...form }
+            ? { ...t, ...fixedForm }
             : t
         )
       );
     } else {
-      setTiles([...tiles, { ...form, id: Date.now() + Math.random() }]);
+      setTiles([...tiles, { ...fixedForm, id: Date.now() + Math.random() }]);
     }
     setShowTileModal(false);
     setEditTileId(null);
@@ -1501,10 +1644,17 @@ function App() {
     });
   };
   
-  // Credit Card Management Functions
+  // Payment Method Management Functions (formerly Credit Card)
   const openAddCreditCardModal = () => {
     setCreditCardModalMode('add');
-    setCreditCardForm({ name: '', last4: '' });
+    setCreditCardForm({ 
+      name: '', 
+      last4: '', 
+      methodType: 'Credit Card',
+      bankName: '',
+      accountType: 'Checking',
+      routingLast4: '',
+    });
     setShowCreditCardModal(true);
     setEditingCreditCardId(null);
   };
@@ -1513,7 +1663,14 @@ function App() {
     const card = creditCards.find(cc => cc.id === id);
     if (!card) return;
     setCreditCardModalMode('edit');
-    setCreditCardForm({ name: card.name, last4: card.last4 });
+    setCreditCardForm({ 
+      name: card.name, 
+      last4: card.last4,
+      methodType: card.methodType || 'Credit Card',
+      bankName: card.bankName || '',
+      accountType: card.accountType || 'Checking',
+      routingLast4: card.routingLast4 || '',
+    });
     setShowCreditCardModal(true);
     setEditingCreditCardId(id);
   };
@@ -1522,41 +1679,77 @@ function App() {
     e.preventDefault();
     const name = creditCardForm.name.trim();
     const last4 = creditCardForm.last4.trim();
+    const methodType = creditCardForm.methodType;
+    const bankName = creditCardForm.bankName.trim();
+    const accountType = creditCardForm.accountType;
+    const routingLast4 = creditCardForm.routingLast4.trim();
     
-    if (!name || !last4) {
-      alert('Please fill in all fields');
+    // Validation based on method type
+    if (!name) {
+      alert('Please enter a name');
       return;
     }
     
-    if (!/^\d{4}$/.test(last4)) {
-      alert('Last 4 digits must be exactly 4 numbers');
-      return;
+    if (methodType === 'Credit Card') {
+      if (!last4 || !/^\d{4}$/.test(last4)) {
+        alert('Please enter the last 4 digits of the card');
+        return;
+      }
+    } else if (methodType === 'ACH') {
+      if (!bankName) {
+        alert('Please enter the bank name');
+        return;
+      }
+      if (!last4 || !/^\d{4}$/.test(last4)) {
+        alert('Please enter the last 4 digits of the account');
+        return;
+      }
+    } else if (methodType === 'Check') {
+      if (!bankName) {
+        alert('Please enter the bank name');
+        return;
+      }
     }
+    // Cash doesn't require additional fields
+    
+    const newCard: CreditCard = {
+      id: editingCreditCardId || Date.now().toString(),
+      name,
+      last4: methodType === 'Cash' ? '' : last4,
+      methodType,
+      bankName: (methodType === 'ACH' || methodType === 'Check') ? bankName : undefined,
+      accountType: methodType === 'ACH' ? accountType : undefined,
+      routingLast4: methodType === 'ACH' ? routingLast4 : undefined,
+    };
     
     if (creditCardModalMode === 'add') {
       // Check for duplicates
-      if (creditCards.some(cc => cc.name === name && cc.last4 === last4)) {
-        alert('A credit card with this name and last 4 digits already exists');
+      if (creditCards.some(cc => cc.name === name && cc.methodType === methodType)) {
+        alert('A payment method with this name already exists');
         return;
       }
-      
-      const newId = Date.now().toString();
-      setCreditCards([...creditCards, { id: newId, name, last4 }]);
+      setCreditCards([...creditCards, newCard]);
     } else if (editingCreditCardId !== null) {
       // Check for duplicates (excluding current card)
-      if (creditCards.some(cc => cc.name === name && cc.last4 === last4 && cc.id !== editingCreditCardId)) {
-        alert('A credit card with this name and last 4 digits already exists');
+      if (creditCards.some(cc => cc.name === name && cc.methodType === methodType && cc.id !== editingCreditCardId)) {
+        alert('A payment method with this name already exists');
         return;
       }
-      
       setCreditCards(creditCards.map(cc =>
-        cc.id === editingCreditCardId ? { ...cc, name, last4 } : cc
+        cc.id === editingCreditCardId ? newCard : cc
       ));
     }
     
     setShowCreditCardModal(false);
     setEditingCreditCardId(null);
-    setCreditCardForm({ name: '', last4: '' });
+    setCreditCardForm({ 
+      name: '', 
+      last4: '', 
+      methodType: 'Credit Card',
+      bankName: '',
+      accountType: 'Checking',
+      routingLast4: '',
+    });
   };
   
   const handleDeleteCreditCard = (id: string) => {
@@ -1989,6 +2182,27 @@ function App() {
     // Check if payment is due within 5 days
     const paymentDueSoon = isPaymentDueSoon(tile, 5);
     
+    // Get budget type color for top edge
+    const getBudgetTypeColor = () => {
+      if (tile.isWebLinkOnly) return '#9E9E9E'; // Medium Grey
+      switch (tile.budgetType) {
+        case 'Bill': return '#4169E1'; // Royal Blue
+        case 'Subscription': return '#87CEEB'; // Light Blue
+        case 'Expense': return '#FF6B6B'; // Light Red
+        case 'Savings': return '#4CAF50'; // Green
+        default: return 'transparent';
+      }
+    };
+    
+    const budgetTypeColor = getBudgetTypeColor();
+    const hasBudgetType = tile.budgetType || tile.isWebLinkOnly;
+    
+    // Build tooltip with budget type
+    const getBudgetTypeLabel = () => {
+      if (tile.isWebLinkOnly) return 'Web Link Only';
+      return tile.budgetType || '';
+    };
+    
     return (
       <a
         className={`tile${paymentDueSoon ? ' payment-due-soon' : ''}`}
@@ -1997,6 +2211,7 @@ function App() {
         rel="noopener noreferrer"
         ref={setNodeRef}
         onClick={handleTileClick}
+        title={`${tile.name}${tile.description ? ` - ${tile.description}` : ''}${hasBudgetType ? `\n📊 ${getBudgetTypeLabel()}` : ''}${tile.budgetAmount ? ` - ${formatCurrency(tile.budgetAmount)}/${tile.budgetPeriod === 'Monthly' ? 'mo' : 'yr'}` : ''}${paymentDueSoon ? '\n⚠️ Payment due soon!' : ''}`}
         style={{
           position: 'relative',
           textDecoration: 'none',
@@ -2009,6 +2224,7 @@ function App() {
             : undefined, // Let CSS handle the box-shadow for glow effect
           zIndex: isDragging ? 100 : undefined,
           cursor: 'pointer',
+          borderTop: hasBudgetType ? `4px solid ${budgetTypeColor}` : undefined,
         }}
         {...attributes}
         {...listeners}
@@ -2053,6 +2269,20 @@ function App() {
             )}
             {tile.appType === 'protocol' && (
               <span style={{ marginLeft: 8, fontSize: 14, color: '#9c27b0' }} title="Custom Protocol Handler">🔗</span>
+            )}
+            {tile.budgetType && (
+              <span 
+                style={{ marginLeft: 8, fontSize: 12 }} 
+                title={`Budget: ${tile.budgetType}${tile.budgetAmount ? ` - ${formatCurrency(tile.budgetAmount)}/${tile.budgetPeriod === 'Monthly' ? 'mo' : 'yr'}` : ''}`}
+              >
+                {tile.budgetType === 'Bill' && '💡'}
+                {tile.budgetType === 'Subscription' && '🔄'}
+                {tile.budgetType === 'Expense' && '💳'}
+                {tile.budgetType === 'Savings' && '💰'}
+              </span>
+            )}
+            {tile.isWebLinkOnly && (
+              <span style={{ marginLeft: 8, fontSize: 11, color: '#9e9e9e' }} title="Web Link Only (no budget tracking)">🔗</span>
             )}
           </div>
           <p className="tile-desc">{tile.description}</p>
@@ -5002,10 +5232,10 @@ function App() {
               <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0 }}>Settings</h1>
             </div>
             
-            {/* Credit Cards Section */}
+            {/* Payment Methods Section */}
             <div style={{ marginBottom: 48 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                <h2 style={{ color: '#1976d2', fontSize: 24, fontWeight: 600, margin: 0 }}>Credit Cards</h2>
+                <h2 style={{ color: '#1976d2', fontSize: 24, fontWeight: 600, margin: 0 }}>Payment Methods</h2>
                 <button
                   onClick={openAddCreditCardModal}
                   style={{
@@ -5033,7 +5263,7 @@ function App() {
                     e.currentTarget.style.transform = 'scale(1)';
                   }}
                 >
-                  💳 Add Credit Card
+                  💳 Add Payment Method
                 </button>
               </div>
               
@@ -5045,7 +5275,7 @@ function App() {
                   textAlign: 'center',
                   color: '#666' 
                 }}>
-                  No credit cards added yet. Click "Add Credit Card" to get started.
+                  No payment methods added yet. Click "Add Payment Method" to get started.
                 </div>
               ) : (
                 <div style={{ 
@@ -5056,7 +5286,7 @@ function App() {
                 }}>
                   <div style={{ 
                     display: 'grid', 
-                    gridTemplateColumns: '2fr 1fr 100px', 
+                    gridTemplateColumns: '1fr 2fr 1fr 100px', 
                     gap: 16, 
                     padding: 16, 
                     background: '#f5f5f5',
@@ -5064,68 +5294,103 @@ function App() {
                     fontSize: 14,
                     borderBottom: '2px solid #e0e0e0'
                   }}>
-                    <div>Card Name</div>
-                    <div>Last 4 Digits</div>
+                    <div>Type</div>
+                    <div>Name</div>
+                    <div>Details</div>
                     <div style={{ textAlign: 'center' }}>Actions</div>
                   </div>
-                  {creditCards.map((card) => (
-                    <div 
-                      key={card.id}
-                      style={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: '2fr 1fr 100px', 
-                        gap: 16, 
-                        padding: 16, 
-                        borderBottom: '1px solid #f0f0f0',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div style={{ fontWeight: 500 }}>{card.name}</div>
-                      <div style={{ color: '#666', fontFamily: 'monospace' }}>**** {card.last4}</div>
-                      <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                        <span
-                          onClick={() => openEditCreditCardModal(card.id)}
-                          style={{
-                            cursor: 'pointer',
-                            fontSize: 18,
-                            color: '#1976d2',
-                            transition: 'all 0.2s ease',
+                  {/* Group by method type and sort A-Z within each group */}
+                  {(['Credit Card', 'ACH', 'Check', 'Cash'] as PaymentMethodType[]).map(methodType => {
+                    const methodCards = creditCards
+                      .filter(c => (c.methodType || 'Credit Card') === methodType)
+                      .sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    if (methodCards.length === 0) return null;
+                    
+                    return methodCards.map((card) => {
+                      const getTypeIcon = () => {
+                        switch (card.methodType || 'Credit Card') {
+                          case 'Credit Card': return '💳';
+                          case 'ACH': return '🏦';
+                          case 'Check': return '📝';
+                          case 'Cash': return '💵';
+                          default: return '💳';
+                        }
+                      };
+                      
+                      const getDetails = () => {
+                        const type = card.methodType || 'Credit Card';
+                        if (type === 'Credit Card') return `**** ${card.last4}`;
+                        if (type === 'ACH') return `${card.bankName} - ${card.accountType} **** ${card.last4}`;
+                        if (type === 'Check') return card.bankName || '-';
+                        if (type === 'Cash') return '-';
+                        return '-';
+                      };
+                      
+                      return (
+                        <div 
+                          key={card.id}
+                          style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '1fr 2fr 1fr 100px', 
+                            gap: 16, 
+                            padding: 16, 
+                            borderBottom: '1px solid #f0f0f0',
+                            alignItems: 'center'
                           }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.2)';
-                            e.currentTarget.style.color = '#1565c0';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.color = '#1976d2';
-                          }}
-                          title="Edit credit card"
                         >
-                          ✏️
-                        </span>
-                        <span
-                          onClick={() => handleDeleteCreditCard(card.id)}
-                          style={{
-                            cursor: 'pointer',
-                            fontSize: 18,
-                            color: '#e53935',
-                            transition: 'all 0.2s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.2)';
-                            e.currentTarget.style.color = '#c62828';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.color = '#e53935';
-                          }}
-                          title="Delete credit card"
-                        >
-                          🗑️
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 18 }}>{getTypeIcon()}</span>
+                            <span style={{ color: '#666', fontSize: 13 }}>{card.methodType || 'Credit Card'}</span>
+                          </div>
+                          <div style={{ fontWeight: 500 }}>{card.name}</div>
+                          <div style={{ color: '#666', fontFamily: 'monospace', fontSize: 13 }}>{getDetails()}</div>
+                          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                            <span
+                              onClick={() => openEditCreditCardModal(card.id)}
+                              style={{
+                                cursor: 'pointer',
+                                fontSize: 18,
+                                color: '#1976d2',
+                                transition: 'all 0.2s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'scale(1.2)';
+                                e.currentTarget.style.color = '#1565c0';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'scale(1)';
+                                e.currentTarget.style.color = '#1976d2';
+                              }}
+                              title="Edit payment method"
+                            >
+                              ✏️
+                            </span>
+                            <span
+                              onClick={() => handleDeleteCreditCard(card.id)}
+                              style={{
+                                cursor: 'pointer',
+                                fontSize: 18,
+                                color: '#e53935',
+                                transition: 'all 0.2s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'scale(1.2)';
+                                e.currentTarget.style.color = '#c62828';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'scale(1)';
+                                e.currentTarget.style.color = '#e53935';
+                              }}
+                              title="Delete payment method"
+                            >
+                              🗑️
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })}
                 </div>
               )}
             </div>
@@ -5475,130 +5740,228 @@ function App() {
                   ))}
                 </select>
               </label>
-              <label style={{ display: 'block', marginTop: 16 }}>
-                Paid Subscription?&nbsp;
-                <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 8 }}>
-                  <span style={{ color: form.paidSubscription ? '#43a047' : '#888', fontWeight: 600, marginRight: 6 }}>No</span>
+              
+              {/* Budget & Payment Section - Merged */}
+              <div style={{ 
+                marginTop: 20, 
+                padding: 16, 
+                background: '#f5f5f5', 
+                borderRadius: 8,
+                border: '1px solid #e0e0e0',
+              }}>
+                <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 12, fontSize: 14 }}>
+                  📊 Budget & Payment Tracking
+                </div>
+                
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
                     type="checkbox"
-                    checked={!!form.paidSubscription}
+                    checked={!!form.isWebLinkOnly}
                     onChange={e => setForm(f => ({
                       ...f,
-                      paidSubscription: e.target.checked,
-                      paymentFrequency: e.target.checked ? (f.paymentFrequency || 'Monthly') : null,
-                      annualType: e.target.checked && f.paymentFrequency === 'Annually' ? (f.annualType || 'Subscriber') : f.annualType,
-                      paymentAmount: e.target.checked ? f.paymentAmount : null,
-                      lastPaymentDate: e.target.checked ? f.lastPaymentDate : null,
+                      isWebLinkOnly: e.target.checked,
+                      budgetType: e.target.checked ? null : f.budgetType,
+                      budgetAmount: e.target.checked ? null : f.budgetAmount,
+                      budgetPeriod: e.target.checked ? null : f.budgetPeriod,
+                      paidSubscription: e.target.checked ? false : f.paidSubscription,
+                      paymentAmount: e.target.checked ? null : f.paymentAmount,
+                      paymentFrequency: e.target.checked ? null : f.paymentFrequency,
                     }))}
-                    style={{ width: 36, height: 20 }}
+                    style={{ width: 18, height: 18 }}
                   />
-                  <span style={{ color: form.paidSubscription ? '#43a047' : '#888', fontWeight: 600, marginLeft: 6 }}>Yes</span>
-                </span>
-              </label>
-              {form.paidSubscription && (
-                <>
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Payment Frequency:<br />
-                    <select
-                      name="paymentFrequency"
-                      value={form.paymentFrequency || 'Monthly'}
-                      onChange={e => setForm(f => ({ 
-                        ...f, 
-                        paymentFrequency: e.target.value as 'Monthly' | 'Annually',
-                        annualType: e.target.value === 'Annually' ? (f.annualType || 'Subscriber') : null
-                      }))}
-                      style={{ width: '100%', padding: 6, marginTop: 2 }}
-                    >
-                      <option value="Monthly">Monthly</option>
-                      <option value="Annually">Annually</option>
-                    </select>
-                  </label>
-                  {form.paymentFrequency === 'Annually' && (
+                  <span style={{ fontWeight: 500 }}>Web Link Only</span>
+                  <span style={{ color: '#666', fontSize: 12 }}>(no budget/payment tracking)</span>
+                </label>
+                
+                {!form.isWebLinkOnly && (
+                  <>
                     <label style={{ display: 'block', marginTop: 12 }}>
-                      Annual Payment Type:<br />
+                      Type:<br />
                       <select
-                        name="annualType"
-                        value={form.annualType || 'Subscriber'}
-                        onChange={e => setForm(f => ({ ...f, annualType: e.target.value as 'Subscriber' | 'Fiscal' | 'Calendar' | null }))}
-                        style={{ width: '100%', padding: 6, marginTop: 2 }}
+                        value={form.budgetType || ''}
+                        onChange={e => {
+                          const newType = e.target.value as 'Bill' | 'Subscription' | 'Expense' | 'Savings' | null || null;
+                          const isPaid = newType === 'Bill' || newType === 'Subscription';
+                          setForm(f => ({ 
+                            ...f, 
+                            budgetType: newType,
+                            paidSubscription: isPaid,
+                            // Sync payment fields when switching to Bill/Subscription
+                            paymentAmount: isPaid ? (f.budgetAmount || f.paymentAmount) : null,
+                            paymentFrequency: isPaid ? (f.budgetPeriod || f.paymentFrequency || 'Monthly') : null,
+                          }));
+                        }}
+                        style={{ width: '100%', padding: 8, marginTop: 4 }}
                       >
-                        <option value="Subscriber">Subscriber Anniversary</option>
-                        <option value="Fiscal">Fiscal Year</option>
-                        <option value="Calendar">Calendar Year</option>
+                        <option value="">-- Select Type --</option>
+                        <option value="Bill">💡 Bill (Fixed recurring payment)</option>
+                        <option value="Subscription">🔄 Subscription (Recurring service)</option>
+                        <option value="Expense">💳 Expense (Variable spending)</option>
+                        <option value="Savings">💰 Savings Goal</option>
                       </select>
                     </label>
-                  )}
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Payment Amount ($):<br />
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="paymentAmount"
-                      value={form.paymentAmount ?? ''}
-                      onChange={e => setForm(f => ({ ...f, paymentAmount: e.target.value ? parseFloat(e.target.value) : null }))}
-                      style={{ width: '100%', padding: 6, marginTop: 2 }}
-                      placeholder="0.00"
-                    />
-                  </label>
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Credit Card:< br />
-                    <select
-                      value={form.creditCardId ?? ''}
-                      onChange={e => {
-                        const selectedCardId = e.target.value;
-                        setForm(f => ({ ...f, creditCardId: selectedCardId || null }));
-                      }}
-                      style={{ width: '100%', padding: 6, marginTop: 2 }}
-                    >
-                      <option value="">-- Select Credit Card --</option>
-                      {creditCards.map(card => (
-                        <option key={card.id} value={card.id}>
-                          {card.name} (**** {card.last4})
-                        </option>
-                      ))}
-                    </select>
-                    {creditCards.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#ff9800', marginTop: 4 }}>
-                        No credit cards defined. Go to <span 
-                          onClick={() => { setMainMenu('settings'); setShowTileModal(false); }}
-                          style={{ color: '#1976d2', cursor: 'pointer', textDecoration: 'underline' }}
-                        >Settings</span> to add one.
-                      </div>
+                    
+                    {form.budgetType && (
+                      <>
+                        <label style={{ display: 'block', marginTop: 12 }}>
+                          {form.budgetType === 'Savings' ? 'Monthly Contribution ($):' : 'Amount ($):'}<br />
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={form.budgetAmount ?? ''}
+                            onChange={e => {
+                              // Fix floating point precision by rounding to 2 decimal places
+                              const rawValue = e.target.value;
+                              const amount = rawValue ? Math.round(parseFloat(rawValue) * 100) / 100 : null;
+                              const isPaid = form.budgetType === 'Bill' || form.budgetType === 'Subscription';
+                              setForm(f => ({ 
+                                ...f, 
+                                budgetAmount: amount,
+                                paymentAmount: isPaid ? amount : f.paymentAmount,
+                              }));
+                            }}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                            placeholder="0.00"
+                          />
+                        </label>
+                        
+                        <label style={{ display: 'block', marginTop: 12 }}>
+                          Frequency:<br />
+                          <select
+                            value={form.budgetPeriod || ''}
+                            onChange={e => {
+                              const period = e.target.value as 'Monthly' | 'Annually' | null || null;
+                              const isPaid = form.budgetType === 'Bill' || form.budgetType === 'Subscription';
+                              setForm(f => ({ 
+                                ...f, 
+                                budgetPeriod: period,
+                                paymentFrequency: isPaid ? period : f.paymentFrequency,
+                                annualType: period === 'Annually' ? (f.annualType || 'Subscriber') : null,
+                              }));
+                            }}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                          >
+                            <option value="">-- Select Frequency --</option>
+                            <option value="Monthly">Monthly</option>
+                            <option value="Annually">Annually</option>
+                          </select>
+                        </label>
+                        
+                        {/* Payment-specific fields for Bill and Subscription */}
+                        {(form.budgetType === 'Bill' || form.budgetType === 'Subscription') && (
+                          <>
+                            {form.budgetPeriod === 'Annually' && (
+                              <label style={{ display: 'block', marginTop: 12 }}>
+                                Annual Payment Type:<br />
+                                <select
+                                  value={form.annualType || 'Subscriber'}
+                                  onChange={e => setForm(f => ({ ...f, annualType: e.target.value as 'Subscriber' | 'Fiscal' | 'Calendar' | null }))}
+                                  style={{ width: '100%', padding: 8, marginTop: 4 }}
+                                >
+                                  <option value="Subscriber">Subscriber Anniversary</option>
+                                  <option value="Fiscal">Fiscal Year (April)</option>
+                                  <option value="Calendar">Calendar Year (January)</option>
+                                </select>
+                              </label>
+                            )}
+                            
+                            <label style={{ display: 'block', marginTop: 12 }}>
+                              Payment Method:<br />
+                              <select
+                                value={form.creditCardId ?? ''}
+                                onChange={e => setForm(f => ({ ...f, creditCardId: e.target.value || null }))}
+                                style={{ width: '100%', padding: 8, marginTop: 4 }}
+                              >
+                                <option value="">-- Select Payment Method --</option>
+                                {/* Group by method type, sorted A-Z within each group */}
+                                {(['Credit Card', 'ACH', 'Check', 'Cash'] as PaymentMethodType[]).map(methodType => {
+                                  const methodCards = creditCards
+                                    .filter(c => (c.methodType || 'Credit Card') === methodType)
+                                    .sort((a, b) => a.name.localeCompare(b.name));
+                                  
+                                  if (methodCards.length === 0) return null;
+                                  
+                                  const getTypeIcon = () => {
+                                    switch (methodType) {
+                                      case 'Credit Card': return '💳';
+                                      case 'ACH': return '🏦';
+                                      case 'Check': return '📝';
+                                      case 'Cash': return '💵';
+                                      default: return '💳';
+                                    }
+                                  };
+                                  
+                                  return (
+                                    <optgroup key={methodType} label={`${getTypeIcon()} ${methodType}`}>
+                                      {methodCards.map(card => {
+                                        const details = card.methodType === 'Cash' ? '' :
+                                          card.methodType === 'ACH' ? ` (${card.bankName} **** ${card.last4})` :
+                                          card.methodType === 'Check' ? ` (${card.bankName})` :
+                                          ` (**** ${card.last4})`;
+                                        return (
+                                          <option key={card.id} value={card.id}>
+                                            {card.name}{details}
+                                          </option>
+                                        );
+                                      })}
+                                    </optgroup>
+                                  );
+                                })}
+                              </select>
+                              {creditCards.length === 0 && (
+                                <div style={{ fontSize: 12, color: '#ff9800', marginTop: 4 }}>
+                                  No payment methods defined. Go to <span 
+                                    onClick={() => { setMainMenu('settings'); setShowTileModal(false); }}
+                                    style={{ color: '#1976d2', cursor: 'pointer', textDecoration: 'underline' }}
+                                  >Settings</span> to add one.
+                                </div>
+                              )}
+                            </label>
+                            
+                            <label style={{ display: 'block', marginTop: 12 }}>
+                              Start/Signup Date:<br />
+                              <input
+                                type="date"
+                                value={form.signupDate ?? ''}
+                                onChange={e => setForm(f => ({ ...f, signupDate: e.target.value }))}
+                                style={{ width: '100%', padding: 8, marginTop: 4 }}
+                              />
+                              <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                                Used to calculate next payment date
+                              </div>
+                            </label>
+                            
+                            <label style={{ display: 'block', marginTop: 12 }}>
+                              Account Management Link:<br />
+                              <input
+                                type="url"
+                                value={form.accountLink ?? ''}
+                                onChange={e => setForm(f => ({ ...f, accountLink: e.target.value }))}
+                                style={{ width: '100%', padding: 8, marginTop: 4 }}
+                                placeholder="https://example.com/account"
+                              />
+                            </label>
+                          </>
+                        )}
+                        
+                        {/* Savings-specific fields */}
+                        {form.budgetType === 'Savings' && (
+                          <div style={{ marginTop: 12, padding: 10, background: '#e8f5e9', borderRadius: 6, fontSize: 12, color: '#2e7d32' }}>
+                            💡 Track your monthly savings contributions. Phase 2 will add goal tracking and progress visualization.
+                          </div>
+                        )}
+                        
+                        {/* Expense-specific fields */}
+                        {form.budgetType === 'Expense' && (
+                          <div style={{ marginTop: 12, padding: 10, background: '#fff3e0', borderRadius: 6, fontSize: 12, color: '#e65100' }}>
+                            💡 Set a budget for variable expenses. Phase 2 will let you track actual spending against this budget.
+                          </div>
+                        )}
+                      </>
                     )}
-                  </label>
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Signup Date:<br />
-                    <input
-                      type="date"
-                      name="signupDate"
-                      value={form.signupDate ?? ''}
-                      onChange={e => setForm(f => ({ ...f, signupDate: e.target.value }))}
-                      style={{ width: '100%', padding: 6, marginTop: 2 }}
-                    />
-                  </label>
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Last Payment Date:<br />
-                    <input
-                      type="date"
-                      name="lastPaymentDate"
-                      value={form.lastPaymentDate ?? ''}
-                      onChange={e => setForm(f => ({ ...f, lastPaymentDate: e.target.value }))}
-                      style={{ width: '100%', padding: 6, marginTop: 2 }}
-                    />
-                  </label>
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Account Link:<br />
-                    <input
-                      type="url"
-                      name="accountLink"
-                      value={form.accountLink ?? ''}
-                      onChange={e => setForm(f => ({ ...f, accountLink: e.target.value }))}
-                      style={{ width: '100%', padding: 6, marginTop: 2 }}
-                      placeholder="https://example.com/account"
-                    />
-                  </label>
-                </>
-              )}
+                  </>
+                )}
+              </div>
               <label style={{ display: 'block', marginTop: 12 }}>
                 Notes:<br />
                 <textarea
@@ -5703,43 +6066,161 @@ function App() {
         )}
 
         {showCreditCardModal && (
-          <Modal onClose={() => { setShowCreditCardModal(false); setEditingCreditCardId(null); setCreditCardForm({ name: '', last4: '' }); }}>
+          <Modal onClose={() => { 
+            setShowCreditCardModal(false); 
+            setEditingCreditCardId(null); 
+            setCreditCardForm({ name: '', last4: '', methodType: 'Credit Card', bankName: '', accountType: 'Checking', routingLast4: '' }); 
+          }}>
             <form onSubmit={handleCreditCardFormSubmit}>
-              <h2>{creditCardModalMode === 'add' ? 'Add Credit Card' : 'Edit Credit Card'}</h2>
-              <label>
-                Credit Card Name:<br />
+              <h2>{creditCardModalMode === 'add' ? 'Add Payment Method' : 'Edit Payment Method'}</h2>
+              
+              {/* Payment Method Type */}
+              <label style={{ display: 'block', marginBottom: 16 }}>
+                Payment Type:<br />
+                <select
+                  value={creditCardForm.methodType}
+                  onChange={e => setCreditCardForm({ 
+                    ...creditCardForm, 
+                    methodType: e.target.value as PaymentMethodType,
+                    // Reset fields when type changes
+                    last4: e.target.value === 'Cash' ? '' : creditCardForm.last4,
+                    bankName: '',
+                    routingLast4: '',
+                  })}
+                  style={{ width: '100%', padding: 8, marginTop: 4 }}
+                >
+                  <option value="Credit Card">💳 Credit Card</option>
+                  <option value="ACH">🏦 ACH (Bank Transfer)</option>
+                  <option value="Check">📝 Check</option>
+                  <option value="Cash">💵 Cash</option>
+                </select>
+              </label>
+              
+              {/* Name - Always shown */}
+              <label style={{ display: 'block', marginBottom: 16 }}>
+                {creditCardForm.methodType === 'Credit Card' ? 'Card Name' : 
+                 creditCardForm.methodType === 'ACH' ? 'Account Name' :
+                 creditCardForm.methodType === 'Check' ? 'Check Description' : 'Payment Name'}:<br />
                 <input
                   value={creditCardForm.name}
                   onChange={e => setCreditCardForm({ ...creditCardForm, name: e.target.value })}
                   required
                   autoFocus
                   maxLength={60}
-                  placeholder="e.g., Chase Sapphire, Amex Gold"
+                  placeholder={
+                    creditCardForm.methodType === 'Credit Card' ? 'e.g., Chase Sapphire, Amex Gold' :
+                    creditCardForm.methodType === 'ACH' ? 'e.g., Primary Checking' :
+                    creditCardForm.methodType === 'Check' ? 'e.g., Personal Checks' : 'e.g., Petty Cash'
+                  }
                   style={{ width: '100%', padding: 8, marginTop: 4 }}
                 />
               </label>
-              <label style={{ display: 'block', marginTop: 16 }}>
-                Last 4 Digits:<br />
-                <input
-                  type="text"
-                  value={creditCardForm.last4}
-                  onChange={e => {
-                    const value = e.target.value.replace(/\D/g, '');
-                    if (value.length <= 4) {
-                      setCreditCardForm({ ...creditCardForm, last4: value });
-                    }
-                  }}
-                  required
-                  maxLength={4}
-                  pattern="[0-9]{4}"
-                  placeholder="1234"
-                  style={{ width: '100%', padding: 8, marginTop: 4, fontFamily: 'monospace' }}
-                />
-              </label>
-              <button type="submit" style={{ marginTop: 16 }}>
-                {creditCardModalMode === 'add' ? 'Add Credit Card' : 'Save Changes'}
+              
+              {/* Credit Card specific fields */}
+              {creditCardForm.methodType === 'Credit Card' && (
+                <label style={{ display: 'block', marginBottom: 16 }}>
+                  Last 4 Digits of Card:<br />
+                  <input
+                    type="text"
+                    value={creditCardForm.last4}
+                    onChange={e => {
+                      const value = e.target.value.replace(/\D/g, '');
+                      if (value.length <= 4) {
+                        setCreditCardForm({ ...creditCardForm, last4: value });
+                      }
+                    }}
+                    required
+                    maxLength={4}
+                    pattern="[0-9]{4}"
+                    placeholder="1234"
+                    style={{ width: '100%', padding: 8, marginTop: 4, fontFamily: 'monospace' }}
+                  />
+                </label>
+              )}
+              
+              {/* ACH specific fields */}
+              {creditCardForm.methodType === 'ACH' && (
+                <>
+                  <label style={{ display: 'block', marginBottom: 16 }}>
+                    Bank Name:<br />
+                    <input
+                      value={creditCardForm.bankName}
+                      onChange={e => setCreditCardForm({ ...creditCardForm, bankName: e.target.value })}
+                      required
+                      maxLength={60}
+                      placeholder="e.g., Chase, Bank of America"
+                      style={{ width: '100%', padding: 8, marginTop: 4 }}
+                    />
+                  </label>
+                  <label style={{ display: 'block', marginBottom: 16 }}>
+                    Account Type:<br />
+                    <select
+                      value={creditCardForm.accountType}
+                      onChange={e => setCreditCardForm({ ...creditCardForm, accountType: e.target.value as 'Checking' | 'Savings' })}
+                      style={{ width: '100%', padding: 8, marginTop: 4 }}
+                    >
+                      <option value="Checking">Checking</option>
+                      <option value="Savings">Savings</option>
+                    </select>
+                  </label>
+                  <label style={{ display: 'block', marginBottom: 16 }}>
+                    Last 4 Digits of Account:<br />
+                    <input
+                      type="text"
+                      value={creditCardForm.last4}
+                      onChange={e => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        if (value.length <= 4) {
+                          setCreditCardForm({ ...creditCardForm, last4: value });
+                        }
+                      }}
+                      required
+                      maxLength={4}
+                      pattern="[0-9]{4}"
+                      placeholder="1234"
+                      style={{ width: '100%', padding: 8, marginTop: 4, fontFamily: 'monospace' }}
+                    />
+                  </label>
+                </>
+              )}
+              
+              {/* Check specific fields */}
+              {creditCardForm.methodType === 'Check' && (
+                <label style={{ display: 'block', marginBottom: 16 }}>
+                  Bank Name:<br />
+                  <input
+                    value={creditCardForm.bankName}
+                    onChange={e => setCreditCardForm({ ...creditCardForm, bankName: e.target.value })}
+                    required
+                    maxLength={60}
+                    placeholder="e.g., Chase, Bank of America"
+                    style={{ width: '100%', padding: 8, marginTop: 4 }}
+                  />
+                </label>
+              )}
+              
+              {/* Cash has no extra fields */}
+              {creditCardForm.methodType === 'Cash' && (
+                <div style={{ 
+                  background: '#e8f5e9', 
+                  padding: 12, 
+                  borderRadius: 6, 
+                  marginBottom: 16,
+                  color: '#2e7d32',
+                  fontSize: 13 
+                }}>
+                  💡 Cash payments don't require additional details.
+                </div>
+              )}
+              
+              <button type="submit" style={{ marginTop: 8 }}>
+                {creditCardModalMode === 'add' ? 'Add Payment Method' : 'Save Changes'}
               </button>
-              <button type="button" onClick={() => { setShowCreditCardModal(false); setEditingCreditCardId(null); setCreditCardForm({ name: '', last4: '' }); }}>
+              <button type="button" onClick={() => { 
+                setShowCreditCardModal(false); 
+                setEditingCreditCardId(null); 
+                setCreditCardForm({ name: '', last4: '', methodType: 'Credit Card', bankName: '', accountType: 'Checking', routingLast4: '' }); 
+              }}>
                 Cancel
               </button>
             </form>

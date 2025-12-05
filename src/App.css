@@ -370,3 +370,13 @@ form button[type="button"]:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Home card wrapper - show edit button on hover */
+.home-card-wrapper:hover .home-card-edit-btn {
+  opacity: 1 !important;
+}
+
+.home-card-edit-btn:hover {
+  transform: scale(1.2) !important;
+  background: #1565c0 !important;
+}
