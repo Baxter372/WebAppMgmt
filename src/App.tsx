@@ -71,6 +71,8 @@ type Tile = {
       notes?: string;
     }
   };
+  // Home Page Tab assignment
+  homePageTabId?: string | null;  // Which home page tab this card belongs to
 };
 type HomePageTab = { id: string; name: string; };
 type Tab = { name: string; subcategories?: string[]; hasStockTicker?: boolean; homePageTabId?: string; };
@@ -471,11 +473,15 @@ function isPaymentDueSoon(
   tile: Tile,
   daysThreshold: number = 5
 ): boolean {
-  if (!tile.paidSubscription || !tile.signupDate || !tile.paymentFrequency) {
+  // Check if tile has payment info (either old system or new budget system)
+  const paymentFreq = tile.paymentFrequency || tile.budgetPeriod;
+  const isPaidItem = tile.paidSubscription || tile.budgetType === 'Bill' || tile.budgetType === 'Subscription';
+  
+  if (!isPaidItem || !tile.signupDate || !paymentFreq) {
     return false;
   }
   
-  const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, tile.paymentFrequency, tile.annualType);
+  const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, paymentFreq, tile.annualType);
   if (!nextPaymentDateStr) return false;
   
   const today = new Date();
@@ -554,8 +560,13 @@ function getUpcomingPaymentsThisMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
   const upcomingPayments: Array<{ tile: Tile; nextPaymentDate: string }> = [];
   
   tiles.forEach(tile => {
-    if (tile.paidSubscription && tile.signupDate && tile.paymentAmount) {
-      const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, tile.paymentFrequency, tile.annualType);
+    // Check if tile has payment info (either old system or new budget system)
+    const hasPaymentAmount = tile.paymentAmount || tile.budgetAmount;
+    const paymentFreq = tile.paymentFrequency || tile.budgetPeriod;
+    const isPaidItem = tile.paidSubscription || tile.budgetType === 'Bill' || tile.budgetType === 'Subscription';
+    
+    if (isPaidItem && tile.signupDate && hasPaymentAmount && paymentFreq) {
+      const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, paymentFreq, tile.annualType);
       if (nextPaymentDateStr) {
         const nextPaymentDate = new Date(nextPaymentDateStr);
         // Check if payment is in current month
@@ -582,8 +593,13 @@ function getUpcomingPaymentsNextMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
   const upcomingPayments: Array<{ tile: Tile; nextPaymentDate: string }> = [];
   
   tiles.forEach(tile => {
-    if (tile.paidSubscription && tile.signupDate && tile.paymentAmount) {
-      const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, tile.paymentFrequency, tile.annualType);
+    // Check if tile has payment info (either old system or new budget system)
+    const hasPaymentAmount = tile.paymentAmount || tile.budgetAmount;
+    const paymentFreq = tile.paymentFrequency || tile.budgetPeriod;
+    const isPaidItem = tile.paidSubscription || tile.budgetType === 'Bill' || tile.budgetType === 'Subscription';
+    
+    if (isPaidItem && tile.signupDate && hasPaymentAmount && paymentFreq) {
+      const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, paymentFreq, tile.annualType);
       if (nextPaymentDateStr) {
         const nextPaymentDate = new Date(nextPaymentDateStr);
         // Check if payment is in next month
@@ -602,7 +618,18 @@ function getUpcomingPaymentsNextMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
 
 // ...START OF MAIN APP...
 function App() {
-  const [showLanding, setShowLanding] = useState(true);
+  // Persist login state - if user has any tiles, they've "logged in" before
+  const [showLanding, setShowLanding] = useState(() => {
+    const hasLoggedIn = localStorage.getItem('hasLoggedIn');
+    return hasLoggedIn !== 'true';
+  });
+  
+  // Save login state when user enters the app
+  useEffect(() => {
+    if (!showLanding) {
+      localStorage.setItem('hasLoggedIn', 'true');
+    }
+  }, [showLanding]);
   
   // --- HomePageTabs state and handlers ---
   const [homePageTabs, setHomePageTabs] = useState<HomePageTab[]>(() => {
@@ -1326,8 +1353,12 @@ function App() {
       data: { type: 'category', categoryId: category.id },
     });
     
-    // Filter cards that belong to this budget category
-    const categoryCards = tiles.filter(t => t.budgetCategory === category.id);
+    // Filter cards that belong to this budget category AND match the selected home page tab
+    const categoryCards = tiles.filter(t => {
+      const matchesCategory = t.budgetCategory === category.id;
+      const matchesTab = selectedHomePageTab === 'all' || t.homePageTabId === selectedHomePageTab || !t.homePageTabId;
+      return matchesCategory && matchesTab;
+    });
     
     // Calculate monthly and annual spend for this category
     const monthlySpend = categoryCards.reduce((sum, tile) => {
@@ -1341,8 +1372,11 @@ function App() {
       return period === 'Annually' ? sum + amount : sum;
     }, 0);
 
-    // Check if there are uncategorized cards that need a home
-    const hasUncategorizedCards = tiles.some(t => !t.budgetCategory);
+    // Check if there are uncategorized cards that need a home (in current tab view)
+    const filteredByTab = selectedHomePageTab === 'all'
+      ? tiles
+      : tiles.filter(t => t.homePageTabId === selectedHomePageTab || !t.homePageTabId);
+    const hasUncategorizedCards = filteredByTab.some(t => !t.budgetCategory);
     
     // Don't render if no cards in this category AND not being hovered AND no uncategorized cards
     // (We want to show empty categories as drop targets when there are uncategorized cards)
@@ -1904,6 +1938,8 @@ function App() {
     budgetPeriod: null,
     budgetCategory: null,
     budgetSubcategory: null,
+    // Home Page Tab assignment
+    homePageTabId: null,
   });
   const [editTileId, setEditTileId] = useState<number | null>(null);
   const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
@@ -2196,6 +2232,8 @@ function App() {
       budgetPeriod: tile.budgetPeriod || null,
       budgetCategory: tile.budgetCategory || null,
       budgetSubcategory: tile.budgetSubcategory || null,
+      // Home Page Tab assignment
+      homePageTabId: tile.homePageTabId || null,
     });
   };
   const handleDeleteTile = (tileId: number) => {
@@ -4203,14 +4241,19 @@ function App() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* Get categories that have at least one card */}
                 {(() => {
+                  // Filter tiles based on selected home page tab
+                  const filteredByTab = selectedHomePageTab === 'all'
+                    ? tiles
+                    : tiles.filter(t => t.homePageTabId === selectedHomePageTab || (!t.homePageTabId && selectedHomePageTab === 'all'));
+                  
                   // Show all categories when dragging OR when there are uncategorized cards that need a home
-                  const hasUncategorizedCards = tiles.some(t => !t.budgetCategory);
+                  const hasUncategorizedCards = filteredByTab.some(t => !t.budgetCategory);
                   const categoriesToShow = (activeCardId || hasUncategorizedCards)
                     ? budgetCategories // Show all categories when dragging or when cards need categorizing
-                    : budgetCategories.filter(cat => tiles.some(t => t.budgetCategory === cat.id));
+                    : budgetCategories.filter(cat => filteredByTab.some(t => t.budgetCategory === cat.id));
                   
                   // Also check for uncategorized cards (cards without budgetCategory)
-                  const uncategorizedCards = tiles.filter(t => !t.budgetCategory);
+                  const uncategorizedCards = filteredByTab.filter(t => !t.budgetCategory);
                   
                   // Handler for card drag between categories
                   const handleCardDragEnd = (event: any) => {
@@ -7473,6 +7516,34 @@ function App() {
                   </div>
                 )}
               </label>
+              {/* Home Page Tab Assignment */}
+              <div style={{ 
+                padding: 12, 
+                background: '#f3e5f5', 
+                borderRadius: 8,
+                border: '1px solid #ce93d8',
+                marginTop: 8,
+              }}>
+                <div style={{ fontWeight: 600, color: '#7b1fa2', marginBottom: 8, fontSize: 14 }}>
+                  🏷️ Home Page Tab (Optional)
+                </div>
+                <label style={{ display: 'block' }}>
+                  <select
+                    value={form.homePageTabId || ''}
+                    onChange={e => setForm(f => ({ ...f, homePageTabId: e.target.value || null }))}
+                    style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc' }}
+                  >
+                    <option value="">-- All Tabs (Default) --</option>
+                    {homePageTabs.filter(t => t.id !== 'all').map(tab => (
+                      <option key={tab.id} value={tab.id}>{tab.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                  Assign this card to a specific Home Page Tab for organization
+                </div>
+              </div>
+              
               {/* Category Section - Uses Budget Categories */}
               <div style={{ 
                 padding: 12, 

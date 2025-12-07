@@ -11,6 +11,10 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 /* Header */
@@ -20,6 +24,7 @@
   align-items: center;
   padding: 20px 0;
   border-bottom: 1px solid #eee;
+  width: 100%;
 }
 
 .landing-logo {
@@ -274,6 +279,11 @@
   background: #1a202c;
   color: #fff;
   padding: 60px 0;
+  width: 100%;
+}
+
+.landing-footer .landing-container {
+  align-items: stretch;
 }
 
 .footer-content {
@@ -281,6 +291,7 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 40px;
   margin-bottom: 40px;
+  width: 100%;
 }
 
 .footer-col h4 {
