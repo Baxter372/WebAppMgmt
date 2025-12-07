@@ -4,10 +4,13 @@ import './App.css';
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
+  useDraggable,
+  DragOverlay,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -57,6 +60,8 @@ type Tile = {
   budgetType?: 'Bill' | 'Subscription' | 'Expense' | 'Savings' | null;
   budgetAmount?: number | null;
   budgetPeriod?: 'Monthly' | 'Annually' | null;
+  budgetCategory?: string | null;  // Budget category ID
+  budgetSubcategory?: string | null;  // Budget subcategory name
   budgetHistory?: {
     [yearMonth: string]: {
       budget: number;
@@ -68,6 +73,31 @@ type Tile = {
 };
 type HomePageTab = { id: string; name: string; };
 type Tab = { name: string; subcategories?: string[]; hasStockTicker?: boolean; homePageTabId?: string; };
+type BudgetCategory = { id: string; name: string; icon: string; subcategories: string[]; };
+
+// Default budget categories (sorted A-Z by name)
+const defaultBudgetCategories: BudgetCategory[] = [
+  { id: 'ai', name: 'AI & Machine Learning', icon: '🤖', subcategories: ['Chat AI', 'Image Generation', 'Code Assistants', 'Writing Tools', 'Research'] },
+  { id: 'finance', name: 'Banking & Finance', icon: '🏦', subcategories: ['Banks', 'Credit Cards', 'Investments', 'Crypto', 'Tax', 'Budgeting Apps'] },
+  { id: 'business', name: 'Business', icon: '💼', subcategories: ['Software/SaaS', 'Office Supplies', 'Professional Services', 'Marketing', 'Equipment', 'Licenses/Permits'] },
+  { id: 'debt', name: 'Debt Repayment', icon: '💳', subcategories: ['Credit Cards', 'Student Loans', 'Personal Loans', 'Medical Debt', 'Other Debt'] },
+  { id: 'discretionary', name: 'Discretionary', icon: '🎉', subcategories: ['Dining Out', 'Entertainment', 'Hobbies', 'Clothing', 'Gifts', 'Subscriptions', 'Travel/Vacation'] },
+  { id: 'education', name: 'Education', icon: '📚', subcategories: ['Tuition', 'Books/Supplies', 'Online Courses', 'Professional Development'] },
+  { id: 'entertainment', name: 'Entertainment & Media', icon: '🎬', subcategories: ['Streaming Video', 'Music', 'Gaming', 'Podcasts', 'Sports', 'News'] },
+  { id: 'general', name: 'General', icon: '📌', subcategories: ['Miscellaneous', 'Favorites', 'Bookmarks', 'Quick Access', 'Other'] },
+  { id: 'health', name: 'Health', icon: '🏥', subcategories: ['Health Insurance', 'Dental Insurance', 'Vision Insurance', 'Prescriptions', 'Doctor Visits', 'Medical Equipment'] },
+  { id: 'household', name: 'Household & Groceries', icon: '🛒', subcategories: ['Groceries', 'Household Supplies', 'Personal Care/Toiletries', 'Cleaning Supplies'] },
+  { id: 'housing', name: 'Housing', icon: '🏠', subcategories: ['Mortgage Payment', 'Property Taxes', 'Homeowners Insurance', 'PMI', 'HOA Fees', 'Rent'] },
+  { id: 'insurance', name: 'Insurance', icon: '🛡️', subcategories: ['Life Insurance', 'Disability Insurance', 'Umbrella Policy', 'Pet Insurance'] },
+  { id: 'maintenance', name: 'Maintenance & Repairs', icon: '🛠️', subcategories: ['Routine Maintenance', 'Lawn Care/Landscaping', 'Pest Control', 'Repairs Fund', 'Home Improvements', 'Appliances'] },
+  { id: 'reference', name: 'Reference & Research', icon: '🔍', subcategories: ['Search Engines', 'Documentation', 'Wikipedia', 'How-To', 'APIs', 'Developer Tools'] },
+  { id: 'savings', name: 'Savings & Investments', icon: '💰', subcategories: ['Emergency Fund', 'Retirement (401k/IRA)', 'General Savings', 'College Fund', 'Investment Account'] },
+  { id: 'shopping', name: 'Shopping & Retail', icon: '🛍️', subcategories: ['General Retail', 'Electronics', 'Clothing', 'Home Goods', 'Groceries', 'Deals & Coupons'] },
+  { id: 'social', name: 'Social & Communication', icon: '💬', subcategories: ['Social Media', 'Messaging', 'Video Chat', 'Forums', 'Professional Networks'] },
+  { id: 'productivity', name: 'Tools & Productivity', icon: '🔧', subcategories: ['Email', 'Calendar', 'Notes', 'File Storage', 'Project Management', 'Collaboration', 'Utilities'] },
+  { id: 'transportation', name: 'Transportation', icon: '🚗', subcategories: ['Car Payment', 'Auto Insurance', 'Gas/Fuel', 'Car Maintenance', 'Public Transit', 'Tolls/Parking', 'Registration/Fees'] },
+  { id: 'utilities', name: 'Utilities', icon: '💡', subcategories: ['Electricity', 'Gas/Propane', 'Water/Sewer', 'Trash/Recycling', 'Internet', 'Cable/Streaming', 'Cell Phone'] },
+];
 type PaymentMethodType = 'Credit Card' | 'ACH' | 'Check' | 'Cash';
 type CreditCard = { 
   id: string; 
@@ -593,6 +623,16 @@ function App() {
     localStorage.setItem('creditCards', JSON.stringify(creditCards));
   }, [creditCards]);
   
+  // --- Budget Categories state and handlers ---
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>(() => {
+    const saved = localStorage.getItem('budgetCategories');
+    return saved ? JSON.parse(saved) : defaultBudgetCategories;
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
+  }, [budgetCategories]);
+  
   // --- WebTabs state and handlers ---
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const saved = localStorage.getItem('tabs');
@@ -632,7 +672,7 @@ function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState<string>('');
-  const [activeReport, setActiveReport] = useState<'cost' | 'list'>('cost');
+  const [activeReport, setActiveReport] = useState<'cost' | 'list' | 'budget'>('cost');
 
   // --- Stock Ticker State ---
   // Major market indices (always shown first)
@@ -1128,6 +1168,707 @@ function App() {
       </div>
     );
   }
+
+  // State to track the currently dragged card for DragOverlay
+  const [activeCardId, setActiveCardId] = useState<number | null>(null);
+  const activeCard = activeCardId ? tiles.find(t => t.id === activeCardId) : null;
+
+  // Draggable Card component for home page
+  function DraggableHomeCard({ tile, categoryId }: { tile: Tile; categoryId: string }) {
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+      id: `card-${tile.id}`,
+      data: { type: 'card', tileId: tile.id, fromCategory: categoryId },
+    });
+    
+    const paymentDueSoon = isPaymentDueSoon(tile, 5);
+    const getBudgetColor = () => {
+      if (tile.isWebLinkOnly) return '#9E9E9E';
+      switch (tile.budgetType) {
+        case 'Bill': return '#4169E1';
+        case 'Subscription': return '#87CEEB';
+        case 'Expense': return '#FF6B6B';
+        case 'Savings': return '#4CAF50';
+        default: return null;
+      }
+    };
+    const budgetColor = getBudgetColor();
+    const budgetTypeLabel = tile.isWebLinkOnly ? 'Web Link Only' : tile.budgetType;
+
+    const style = {
+      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      opacity: isDragging ? 0.3 : 1,
+      cursor: isDragging ? 'grabbing' : 'grab',
+    };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={{
+          ...style,
+          position: 'relative',
+          flexShrink: 0,
+          touchAction: 'none',
+        }}
+        className="home-card-wrapper"
+        {...attributes}
+        {...listeners}
+      >
+        <a
+          href={tile.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`${tile.name}${tile.description ? ` - ${tile.description}` : ''}${budgetTypeLabel ? `\n📊 ${budgetTypeLabel}` : ''}${tile.budgetAmount ? ` - ${formatCurrency(tile.budgetAmount)}/${tile.budgetPeriod === 'Monthly' ? 'mo' : 'yr'}` : ''}${paymentDueSoon ? '\n⚠️ Payment due soon!' : ''}\n\n🖱️ Drag to move to another category`}
+          onClick={(e) => {
+            if (isDragging) {
+              e.preventDefault();
+              return;
+            }
+            e.stopPropagation();
+            trackSession(tile.id, tile.name);
+          }}
+          style={{
+            textDecoration: 'none',
+            display: 'block',
+          }}
+        >
+          <img
+            src={tile.logo}
+            alt={tile.name}
+            className={paymentDueSoon ? 'home-card-payment-due' : ''}
+            style={{
+              width: 40,
+              height: 40,
+              objectFit: 'contain',
+              borderRadius: 6,
+              background: '#f9f9f9',
+              padding: 4,
+              border: paymentDueSoon ? '2px solid #ff9800' : '1px solid #e0e0e0',
+              borderTop: budgetColor ? `3px solid ${budgetColor}` : undefined,
+              cursor: isDragging ? 'grabbing' : 'grab',
+              transition: 'all 0.2s ease',
+              animation: paymentDueSoon ? 'homeCardGlow 2s ease-in-out infinite' : 'none',
+            }}
+            onMouseEnter={(e) => {
+              if (!isDragging) {
+                e.currentTarget.style.transform = 'scale(1.15)';
+                e.currentTarget.style.boxShadow = paymentDueSoon 
+                  ? '0 0 12px 4px rgba(255, 152, 0, 0.6)' 
+                  : '0 2px 8px rgba(25, 118, 210, 0.3)';
+                const hoverBorderColor = paymentDueSoon ? '#ff9800' : '#1976d2';
+                e.currentTarget.style.borderLeftColor = hoverBorderColor;
+                e.currentTarget.style.borderRightColor = hoverBorderColor;
+                e.currentTarget.style.borderBottomColor = hoverBorderColor;
+                if (budgetColor) {
+                  e.currentTarget.style.borderTopColor = budgetColor;
+                } else {
+                  e.currentTarget.style.borderTopColor = hoverBorderColor;
+                }
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = paymentDueSoon ? '' : 'none';
+              const defaultBorderColor = paymentDueSoon ? '#ff9800' : '#e0e0e0';
+              e.currentTarget.style.borderLeftColor = defaultBorderColor;
+              e.currentTarget.style.borderRightColor = defaultBorderColor;
+              e.currentTarget.style.borderBottomColor = defaultBorderColor;
+              if (budgetColor) {
+                e.currentTarget.style.borderTopColor = budgetColor;
+              } else {
+                e.currentTarget.style.borderTopColor = defaultBorderColor;
+              }
+            }}
+          />
+        </a>
+        {/* Edit button - appears on hover via CSS */}
+        <button
+          className="home-card-edit-btn"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleEditTile(tile.id);
+          }}
+          title="Edit card"
+          style={{
+            position: 'absolute',
+            top: -6,
+            right: -6,
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            border: 'none',
+            background: '#1976d2',
+            color: '#fff',
+            fontSize: 10,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0,
+            transition: 'opacity 0.2s ease, transform 0.2s ease',
+            zIndex: 10,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          }}
+        >
+          ✏️
+        </button>
+      </div>
+    );
+  }
+
+  // Droppable Category Tile that accepts cards from other categories
+  function DroppableCategoryTile({ category }: { category: BudgetCategory }) {
+    const { isOver, setNodeRef: setDropRef } = useDroppable({
+      id: `category-${category.id}`,
+      data: { type: 'category', categoryId: category.id },
+    });
+    
+    // Filter cards that belong to this budget category
+    const categoryCards = tiles.filter(t => t.budgetCategory === category.id);
+    
+    // Calculate monthly and annual spend for this category
+    const monthlySpend = categoryCards.reduce((sum, tile) => {
+      const amount = parseFloat(String(tile.budgetAmount || tile.paymentAmount || 0));
+      const period = tile.budgetPeriod || tile.paymentFrequency;
+      return period === 'Monthly' ? sum + amount : sum;
+    }, 0);
+    const annualSpend = categoryCards.reduce((sum, tile) => {
+      const amount = parseFloat(String(tile.budgetAmount || tile.paymentAmount || 0));
+      const period = tile.budgetPeriod || tile.paymentFrequency;
+      return period === 'Annually' ? sum + amount : sum;
+    }, 0);
+
+    // Check if there are uncategorized cards that need a home
+    const hasUncategorizedCards = tiles.some(t => !t.budgetCategory);
+    
+    // Don't render if no cards in this category AND not being hovered AND no uncategorized cards
+    // (We want to show empty categories as drop targets when there are uncategorized cards)
+    if (categoryCards.length === 0 && !isOver && !hasUncategorizedCards) return null;
+
+    return (
+      <div
+        ref={setDropRef}
+        onClick={() => {
+          setMainMenu('home');
+          setActiveTab(category.id);
+        }}
+        style={{
+          background: isOver ? '#e3f2fd' : (categoryCards.length === 0 ? '#fafafa' : '#fff'),
+          border: isOver ? '2px dashed #1976d2' : (categoryCards.length === 0 ? '2px dashed #ccc' : '2px solid #e0e0e0'),
+          borderRadius: 12,
+          boxShadow: isOver ? '0 4px 24px #1976d244' : '0 2px 12px #0001',
+          padding: '20px 24px',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          display: 'flex',
+          flexDirection: 'column',
+          height: 280,
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          transform: isOver ? 'scale(1.02)' : 'scale(1)',
+          opacity: categoryCards.length === 0 && !isOver ? 0.7 : 1,
+        }}
+        onMouseEnter={(e) => {
+          if (!isOver) {
+            e.currentTarget.style.boxShadow = '0 4px 24px #1976d244';
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.borderColor = '#1976d2';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isOver) {
+            e.currentTarget.style.boxShadow = '0 2px 12px #0001';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.borderColor = '#e0e0e0';
+          }
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '2px solid #e0e0e0',
+          paddingBottom: 12,
+          marginBottom: 16,
+        }}>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ 
+              color: '#1976d2', 
+              fontSize: 18, 
+              fontWeight: 700, 
+              margin: 0,
+              marginBottom: 6,
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span style={{ fontSize: 20 }}>{category.icon}</span>
+              {category.name}
+              {isOver && <span style={{ fontSize: 12, color: '#4caf50', fontWeight: 500 }}>Drop here!</span>}
+            </h2>
+            <div style={{
+              fontSize: 13,
+              color: '#666',
+              textAlign: 'left',
+              fontWeight: 500,
+            }}>
+              Monthly: ${monthlySpend.toFixed(2)} • Annual: ${annualSpend.toFixed(2)}
+            </div>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowTileModal(true);
+              setEditTileId(null);
+              setForm({
+                name: '',
+                description: '',
+                link: '',
+                logo: '',
+                category: '',
+                subcategory: '',
+                appType: 'web',
+                localPath: '',
+                paidSubscription: false,
+                paymentFrequency: null,
+                annualType: null,
+                paymentAmount: null,
+                signupDate: null,
+                lastPaymentDate: null,
+                creditCardId: null,
+                paymentTypeLast4: '',
+                creditCardName: '',
+                accountLink: '',
+                notes: '',
+                isWebLinkOnly: false,
+                budgetType: null,
+                budgetAmount: null,
+                budgetPeriod: null,
+                budgetCategory: category.id,
+                budgetSubcategory: null,
+              });
+            }}
+            style={{
+              background: '#f5f5f5',
+              color: '#1976d2',
+              border: '1px solid #e0e0e0',
+              borderRadius: '50%',
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: 20,
+              fontWeight: 700,
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#e3f2fd';
+              e.currentTarget.style.transform = 'scale(1.1)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(25, 118, 210, 0.3)';
+              e.currentTarget.style.borderColor = '#1976d2';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f5f5f5';
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+              e.currentTarget.style.borderColor = '#e0e0e0';
+            }}
+            title={`Add new card to ${category.name}`}
+          >
+            +
+          </button>
+        </div>
+        <div style={{ 
+          flex: 1,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 12,
+          alignContent: 'flex-start',
+          justifyContent: 'flex-start',
+          padding: '8px 0',
+          minHeight: isOver && categoryCards.length === 0 ? 80 : undefined,
+        }}>
+          {categoryCards.slice(0, 24).map((tile) => (
+            tile.logo && <DraggableHomeCard key={tile.id} tile={tile} categoryId={category.id} />
+          ))}
+          {categoryCards.length > 24 && (
+            <div style={{
+              width: 40,
+              height: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#f0f0f0',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#666',
+              flexShrink: 0,
+              pointerEvents: 'none',
+            }}>
+              +{categoryCards.length - 24}
+            </div>
+          )}
+          {categoryCards.length === 0 && (
+            <div style={{ 
+              color: isOver ? '#1976d2' : '#999', 
+              fontSize: 14, 
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              height: '100%',
+              flexDirection: 'column',
+              gap: 8,
+            }}>
+              <span style={{ fontSize: 32, opacity: isOver ? 1 : 0.5 }}>📥</span>
+              <span>{isOver ? `Drop to add to ${category.name}` : 'Drag cards here'}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // New component: Displays TILES based on Budget Categories (replacing tab-based grouping)
+  function SortableBudgetCategoryTile({ category }: { category: BudgetCategory }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+      id: category.id,
+    });
+    
+    // Filter cards that belong to this budget category
+    const categoryCards = tiles.filter(t => t.budgetCategory === category.id);
+    
+    // Calculate monthly and annual spend for this category
+    const monthlySpend = categoryCards.reduce((sum, tile) => {
+      const amount = parseFloat(String(tile.budgetAmount || tile.paymentAmount || 0));
+      const period = tile.budgetPeriod || tile.paymentFrequency;
+      return period === 'Monthly' ? sum + amount : sum;
+    }, 0);
+    const annualSpend = categoryCards.reduce((sum, tile) => {
+      const amount = parseFloat(String(tile.budgetAmount || tile.paymentAmount || 0));
+      const period = tile.budgetPeriod || tile.paymentFrequency;
+      return period === 'Annually' ? sum + amount : sum;
+    }, 0);
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+      zIndex: isDragging ? 100 : 1,
+    };
+
+    // Don't render if no cards in this category
+    if (categoryCards.length === 0) return null;
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+      >
+        <div
+          onClick={(e) => {
+            if (!isDragging) {
+              // Navigate to detailed view for this category
+              setMainMenu('home');
+              setActiveTab(category.id); // Use category ID as active "tab"
+            }
+          }}
+          style={{
+            background: '#fff',
+            border: '2px solid #e0e0e0',
+            borderRadius: 12,
+            boxShadow: isDragging ? '0 8px 32px #1976d244' : '0 2px 12px #0001',
+            padding: '20px 24px',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            flexDirection: 'column',
+            height: 280,
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+          }}
+          onMouseEnter={(e) => {
+            if (!isDragging) {
+              e.currentTarget.style.boxShadow = '0 4px 24px #1976d244';
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.borderColor = '#1976d2';
+              e.currentTarget.style.cursor = 'pointer';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isDragging) {
+              e.currentTarget.style.boxShadow = '0 2px 12px #0001';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = '#e0e0e0';
+              e.currentTarget.style.cursor = 'grab';
+            }
+          }}
+        >
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '2px solid #e0e0e0',
+            paddingBottom: 12,
+            marginBottom: 16,
+          }}>
+            <div style={{ flex: 1 }}>
+              <h2 style={{ 
+                color: '#1976d2', 
+                fontSize: 18, 
+                fontWeight: 700, 
+                margin: 0,
+                marginBottom: 6,
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <span style={{ fontSize: 20 }}>{category.icon}</span>
+                {category.name}
+              </h2>
+              <div style={{
+                fontSize: 13,
+                color: '#666',
+                textAlign: 'left',
+                fontWeight: 500,
+              }}>
+                Monthly: ${monthlySpend.toFixed(2)} • Annual: ${annualSpend.toFixed(2)}
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowTileModal(true);
+                setEditTileId(null);
+                setForm({
+                  name: '',
+                  description: '',
+                  link: '',
+                  logo: '',
+                  category: '', // Deprecated - keeping for backward compatibility
+                  subcategory: '',
+                  appType: 'web',
+                  localPath: '',
+                  paidSubscription: false,
+                  paymentFrequency: null,
+                  annualType: null,
+                  paymentAmount: null,
+                  signupDate: null,
+                  lastPaymentDate: null,
+                  creditCardId: null,
+                  paymentTypeLast4: '',
+                  creditCardName: '',
+                  accountLink: '',
+                  notes: '',
+                  // Set budget category for new card
+                  isWebLinkOnly: false,
+                  budgetType: null,
+                  budgetAmount: null,
+                  budgetPeriod: null,
+                  budgetCategory: category.id,
+                  budgetSubcategory: null,
+                });
+              }}
+              style={{
+                background: '#f5f5f5',
+                color: '#1976d2',
+                border: '1px solid #e0e0e0',
+                borderRadius: '50%',
+                width: 32,
+                height: 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: 20,
+                fontWeight: 700,
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#e3f2fd';
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(25, 118, 210, 0.3)';
+                e.currentTarget.style.borderColor = '#1976d2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                e.currentTarget.style.borderColor = '#e0e0e0';
+              }}
+              title={`Add new card to ${category.name}`}
+            >
+              +
+            </button>
+          </div>
+          <div style={{ 
+            flex: 1,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            alignContent: 'flex-start',
+            justifyContent: 'flex-start',
+            padding: '8px 0'
+          }}>
+            {categoryCards.slice(0, 24).map((tile) => {
+              const paymentDueSoon = isPaymentDueSoon(tile, 5);
+              // Budget type color for home page cards
+              const getBudgetColor = () => {
+                if (tile.isWebLinkOnly) return '#9E9E9E'; // Medium Grey
+                switch (tile.budgetType) {
+                  case 'Bill': return '#4169E1'; // Royal Blue
+                  case 'Subscription': return '#87CEEB'; // Light Blue
+                  case 'Expense': return '#FF6B6B'; // Light Red
+                  case 'Savings': return '#4CAF50'; // Green
+                  default: return null;
+                }
+              };
+              const budgetColor = getBudgetColor();
+              const budgetTypeLabel = tile.isWebLinkOnly ? 'Web Link Only' : tile.budgetType;
+              
+              return tile.logo && (
+                <div
+                  key={tile.id}
+                  style={{
+                    position: 'relative',
+                    flexShrink: 0,
+                  }}
+                  className="home-card-wrapper"
+                >
+                  <a
+                    href={tile.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`${tile.name}${tile.description ? ` - ${tile.description}` : ''}${budgetTypeLabel ? `\n📊 ${budgetTypeLabel}` : ''}${tile.budgetAmount ? ` - ${formatCurrency(tile.budgetAmount)}/${tile.budgetPeriod === 'Monthly' ? 'mo' : 'yr'}` : ''}${paymentDueSoon ? '\n⚠️ Payment due soon!' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trackSession(tile.id, tile.name);
+                    }}
+                    style={{
+                      textDecoration: 'none',
+                      display: 'block',
+                    }}
+                  >
+                    <img
+                      src={tile.logo}
+                      alt={tile.name}
+                      className={paymentDueSoon ? 'home-card-payment-due' : ''}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        background: '#f9f9f9',
+                        padding: 4,
+                        border: paymentDueSoon ? '2px solid #ff9800' : '1px solid #e0e0e0',
+                        borderTop: budgetColor ? `3px solid ${budgetColor}` : undefined,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        animation: paymentDueSoon ? 'homeCardGlow 2s ease-in-out infinite' : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.15)';
+                        e.currentTarget.style.boxShadow = paymentDueSoon 
+                          ? '0 0 12px 4px rgba(255, 152, 0, 0.6)' 
+                          : '0 2px 8px rgba(25, 118, 210, 0.3)';
+                        const hoverBorderColor = paymentDueSoon ? '#ff9800' : '#1976d2';
+                        e.currentTarget.style.borderLeftColor = hoverBorderColor;
+                        e.currentTarget.style.borderRightColor = hoverBorderColor;
+                        e.currentTarget.style.borderBottomColor = hoverBorderColor;
+                        if (budgetColor) {
+                          e.currentTarget.style.borderTopColor = budgetColor;
+                        } else {
+                          e.currentTarget.style.borderTopColor = hoverBorderColor;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = paymentDueSoon ? '' : 'none';
+                        const defaultBorderColor = paymentDueSoon ? '#ff9800' : '#e0e0e0';
+                        e.currentTarget.style.borderLeftColor = defaultBorderColor;
+                        e.currentTarget.style.borderRightColor = defaultBorderColor;
+                        e.currentTarget.style.borderBottomColor = defaultBorderColor;
+                        if (budgetColor) {
+                          e.currentTarget.style.borderTopColor = budgetColor;
+                        } else {
+                          e.currentTarget.style.borderTopColor = defaultBorderColor;
+                        }
+                      }}
+                    />
+                  </a>
+                  {/* Edit button - appears on hover via CSS */}
+                  <button
+                    className="home-card-edit-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleEditTile(tile.id);
+                    }}
+                    title="Edit card"
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: '#1976d2',
+                      color: '#fff',
+                      fontSize: 10,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0,
+                      transition: 'opacity 0.2s ease, transform 0.2s ease',
+                      zIndex: 10,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    }}
+                  >
+                    ✏️
+                  </button>
+                </div>
+              );
+            })}
+            {categoryCards.length > 24 && (
+              <div style={{
+                width: 40,
+                height: 40,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f0f0f0',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#666',
+                flexShrink: 0,
+                pointerEvents: 'none',
+              }}>
+                +{categoryCards.length - 24}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const [showTileModal, setShowTileModal] = useState(false);
   const [showTabModal, setShowTabModal] = useState(false);
   const [tabModalMode, setTabModalMode] = useState<'add' | 'edit'>('add');
@@ -1158,6 +1899,8 @@ function App() {
     budgetType: null,
     budgetAmount: null,
     budgetPeriod: null,
+    budgetCategory: null,
+    budgetSubcategory: null,
   });
   const [editTileId, setEditTileId] = useState<number | null>(null);
   const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
@@ -1249,6 +1992,10 @@ function App() {
     setActiveSessions(prev => prev.filter(s => s.tileId !== tileId));
   };
   
+  const closeAllSessions = () => {
+    setActiveSessions([]);
+  };
+  
   const formatSessionDuration = (openedAt: number) => {
     const minutes = Math.floor((Date.now() - openedAt) / 60000);
     if (minutes < 1) return 'Just now';
@@ -1277,6 +2024,20 @@ function App() {
     routingLast4: '',
   });
   const [editingCreditCardId, setEditingCreditCardId] = useState<string | null>(null);
+  
+  // Budget Category Management State
+  const [showBudgetCategoryModal, setShowBudgetCategoryModal] = useState(false);
+  const [budgetCategoryModalMode, setBudgetCategoryModalMode] = useState<'add' | 'edit'>('add');
+  const [budgetCategoryForm, setBudgetCategoryForm] = useState<{
+    name: string;
+    icon: string;
+    subcategories: string;  // Comma-separated for easy editing
+  }>({ 
+    name: '', 
+    icon: '📁',
+    subcategories: '',
+  });
+  const [editingBudgetCategoryId, setEditingBudgetCategoryId] = useState<string | null>(null);
   
   // Sort function for APP Report
   const handleSort = (column: 'name' | 'frequency' | 'paymentType') => {
@@ -1366,10 +2127,11 @@ function App() {
     localStorage.setItem('tiles', JSON.stringify(tiles));
   }, [tiles]);
   useEffect(() => {
-    if (activeTab !== '' && activeTab !== 'APP Report' && !tabs.find(tab => tab.name === activeTab)) {
-      setActiveTab(tabs[0]?.name || '');
+    // Validate that activeTab is a valid budget category ID (or empty/special values)
+    if (activeTab !== '' && activeTab !== 'APP Report' && !budgetCategories.find(cat => cat.id === activeTab)) {
+      setActiveTab(''); // Reset to home if category doesn't exist
     }
-  }, [tabs, activeTab]);
+  }, [budgetCategories, activeTab]);
   useEffect(() => {
     localStorage.setItem('bannerTitle', bannerTitle);
     document.title = bannerTitle;
@@ -1429,6 +2191,8 @@ function App() {
       budgetType: tile.budgetType || null,
       budgetAmount: tile.budgetAmount || null,
       budgetPeriod: tile.budgetPeriod || null,
+      budgetCategory: tile.budgetCategory || null,
+      budgetSubcategory: tile.budgetSubcategory || null,
     });
   };
   const handleDeleteTile = (tileId: number) => {
@@ -1771,6 +2535,104 @@ function App() {
     setCreditCards(creditCards.filter(cc => cc.id !== id));
   };
   
+  // Budget Category Management Functions
+  const openAddBudgetCategoryModal = () => {
+    setBudgetCategoryModalMode('add');
+    setBudgetCategoryForm({ 
+      name: '', 
+      icon: '📁',
+      subcategories: '',
+    });
+    setShowBudgetCategoryModal(true);
+    setEditingBudgetCategoryId(null);
+  };
+  
+  const openEditBudgetCategoryModal = (id: string) => {
+    const category = budgetCategories.find(bc => bc.id === id);
+    if (!category) return;
+    setBudgetCategoryModalMode('edit');
+    setBudgetCategoryForm({ 
+      name: category.name, 
+      icon: category.icon,
+      subcategories: category.subcategories.join(', '),
+    });
+    setShowBudgetCategoryModal(true);
+    setEditingBudgetCategoryId(id);
+  };
+  
+  const handleBudgetCategoryFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = budgetCategoryForm.name.trim();
+    const icon = budgetCategoryForm.icon.trim() || '📁';
+    const subcategories = budgetCategoryForm.subcategories
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    if (!name) {
+      alert('Please enter a category name');
+      return;
+    }
+    
+    const newCategory: BudgetCategory = {
+      id: editingBudgetCategoryId || Date.now().toString(),
+      name,
+      icon,
+      subcategories,
+    };
+    
+    if (budgetCategoryModalMode === 'add') {
+      // Check for duplicates
+      if (budgetCategories.some(bc => bc.name.toLowerCase() === name.toLowerCase())) {
+        alert('A budget category with this name already exists');
+        return;
+      }
+      setBudgetCategories([...budgetCategories, newCategory]);
+    } else if (editingBudgetCategoryId !== null) {
+      // Check for duplicates (excluding current)
+      if (budgetCategories.some(bc => bc.name.toLowerCase() === name.toLowerCase() && bc.id !== editingBudgetCategoryId)) {
+        alert('A budget category with this name already exists');
+        return;
+      }
+      setBudgetCategories(budgetCategories.map(bc =>
+        bc.id === editingBudgetCategoryId ? newCategory : bc
+      ));
+    }
+    
+    setShowBudgetCategoryModal(false);
+    setEditingBudgetCategoryId(null);
+    setBudgetCategoryForm({ 
+      name: '', 
+      icon: '📁',
+      subcategories: '',
+    });
+  };
+  
+  const handleDeleteBudgetCategory = (id: string) => {
+    const category = budgetCategories.find(bc => bc.id === id);
+    if (!category) return;
+    
+    // Check if any tiles are using this category
+    const tilesUsingCategory = tiles.filter(t => t.budgetCategory === id);
+    if (tilesUsingCategory.length > 0) {
+      if (!window.confirm(`This category is used by ${tilesUsingCategory.length} card(s). Deleting it will remove the category from those cards. Continue?`)) {
+        return;
+      }
+      // Remove category reference from tiles
+      setTiles(tiles.map(t => 
+        t.budgetCategory === id ? { ...t, budgetCategory: null, budgetSubcategory: null } : t
+      ));
+    }
+    
+    setBudgetCategories(budgetCategories.filter(bc => bc.id !== id));
+  };
+  
+  const resetBudgetCategoriesToDefault = () => {
+    if (window.confirm('This will reset all budget categories to the default list. Any custom categories will be lost. Continue?')) {
+      setBudgetCategories(defaultBudgetCategories);
+    }
+  };
+  
   // Auto-fetch logo function
   const handleAutoFetchLogo = async () => {
     const urlToUse = form.appType === 'local' && form.link ? form.link : form.link;
@@ -1961,7 +2823,8 @@ function App() {
         }
         if (restoreData.financeTiles) {
           localStorage.setItem('financeTiles', JSON.stringify(restoreData.financeTiles));
-          setFinanceTiles(restoreData.financeTiles);
+          // Note: financeTiles state is managed within FinanceManagementPage component
+          // The reload below will restore it from localStorage
         }
         if (restoreData.homePageTabs) {
           localStorage.setItem('homePageTabs', JSON.stringify(restoreData.homePageTabs));
@@ -2022,7 +2885,8 @@ function App() {
       }
       if (data.financeTiles) {
         localStorage.setItem('financeTiles', JSON.stringify(data.financeTiles));
-        setFinanceTiles(data.financeTiles);
+        // Note: financeTiles state is managed within FinanceManagementPage component
+        // The reload below will restore it from localStorage
       }
       if (data.homePageTabs) {
         localStorage.setItem('homePageTabs', JSON.stringify(data.homePageTabs));
@@ -2067,7 +2931,8 @@ function App() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
   
-  const filteredTiles = tiles.filter(tile => tile.category === activeTab);
+  // Filter tiles by budget category (activeTab now holds category ID)
+  const filteredTiles = tiles.filter(tile => tile.budgetCategory === activeTab);
   const filteredTileIds = filteredTiles.map(tile => tile.id);
   
   // Group tiles by subcategory
@@ -2828,6 +3693,7 @@ function App() {
                   background: activeReport === 'list' ? '#64b5f6' : 'none',
                   borderRadius: 6,
                   fontSize: 14,
+                  marginBottom: 2,
                   transition: 'background 0.2s, color 0.2s',
                 }}
                 onMouseEnter={(e) => {
@@ -2842,6 +3708,33 @@ function App() {
                 }}
               >
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>App Report</span>
+              </div>
+              <div
+                onClick={() => { setMainMenu('reports'); setActiveReport('budget'); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '8px 0 8px 8px',
+                  cursor: 'pointer',
+                  color: activeReport === 'budget' ? '#fff' : '#bbdefb',
+                  fontWeight: activeReport === 'budget' ? 700 : 500,
+                  background: activeReport === 'budget' ? '#64b5f6' : 'none',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  transition: 'background 0.2s, color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (activeReport !== 'budget') {
+                    e.currentTarget.style.background = '#64b5f633';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeReport !== 'budget') {
+                    e.currentTarget.style.background = 'none';
+                  }
+                }}
+              >
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Budget Report</span>
               </div>
             </div>
           )}
@@ -3094,30 +3987,37 @@ function App() {
                         );
                       }
                       
-                      return results.slice(0, 8).map(tile => (
-                        <div
-                          key={tile.id}
-                          onClick={() => {
-                            setActiveTab(tile.category);
-                            setSearchQuery('');
-                          }}
-                          style={{
-                            padding: '10px 12px',
-                            borderBottom: '1px solid #f0f0f0',
-                            cursor: 'pointer',
-                            transition: 'background 0.2s',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                        >
-                          <div style={{ fontWeight: 600, color: '#1976d2', fontSize: 13 }}>
-                            {tile.name}
+                      return results.slice(0, 8).map(tile => {
+                        const category = budgetCategories.find(c => c.id === tile.budgetCategory);
+                        return (
+                          <div
+                            key={tile.id}
+                            onClick={() => {
+                              // Navigate to category view or edit the tile
+                              if (tile.budgetCategory) {
+                                setActiveTab(tile.budgetCategory);
+                              }
+                              setSearchQuery('');
+                            }}
+                            style={{
+                              padding: '10px 12px',
+                              borderBottom: '1px solid #f0f0f0',
+                              cursor: 'pointer',
+                              transition: 'background 0.2s',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                          >
+                            <div style={{ fontWeight: 600, color: '#1976d2', fontSize: 13 }}>
+                              {tile.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                              {category ? `${category.icon} ${category.name}` : 'Uncategorized'}
+                              {tile.budgetSubcategory && ` • ${tile.budgetSubcategory}`}
+                            </div>
                           </div>
-                          <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
-                            {tile.category}
-                          </div>
-                        </div>
-                      ));
+                        );
+                      });
                     })()}
                   </div>
                 )}
@@ -3288,35 +4188,167 @@ function App() {
             {/* Two Column Layout: Main Content + Sidebar */}
             <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
               
-              {/* Main Content - Web Tile Cards */}
+              {/* Main Content - Budget Category TILES containing CARDS */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleHomeTabDragEnd}
-                >
-                  <SortableContext
-                    items={tabs.filter(tab => 
-                      selectedHomePageTab === 'all' || tab.homePageTabId === selectedHomePageTab || !tab.homePageTabId
-                    ).map(tab => tab.name)}
-                    strategy={rectSortingStrategy}
-                  >
-                    <div style={{ 
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))',
-                      gap: 24,
-                      alignItems: 'stretch',
-                      width: '100%',
-                      maxWidth: '100%',
-                    }}>
-                      {tabs.filter(tab => 
-                        selectedHomePageTab === 'all' || tab.homePageTabId === selectedHomePageTab || !tab.homePageTabId
-                      ).map((tab) => (
-                        <SortableHomeTab key={tab.name} tab={tab} />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
+                {/* Get categories that have at least one card */}
+                {(() => {
+                  // Show all categories when dragging OR when there are uncategorized cards that need a home
+                  const hasUncategorizedCards = tiles.some(t => !t.budgetCategory);
+                  const categoriesToShow = (activeCardId || hasUncategorizedCards)
+                    ? budgetCategories // Show all categories when dragging or when cards need categorizing
+                    : budgetCategories.filter(cat => tiles.some(t => t.budgetCategory === cat.id));
+                  
+                  // Also check for uncategorized cards (cards without budgetCategory)
+                  const uncategorizedCards = tiles.filter(t => !t.budgetCategory);
+                  
+                  // Handler for card drag between categories
+                  const handleCardDragEnd = (event: any) => {
+                    const { active, over } = event;
+                    setActiveCardId(null);
+                    
+                    if (!over) return;
+                    
+                    const activeIdStr = String(active.id);
+                    const overIdStr = String(over.id);
+                    
+                    // Check if we're dropping a card onto a category
+                    if (activeIdStr.startsWith('card-') && overIdStr.startsWith('category-')) {
+                      const cardIdStr = activeIdStr.replace('card-', '');
+                      const cardId = parseFloat(cardIdStr);
+                      const targetCategoryId = overIdStr.replace('category-', '');
+                      
+                      // Update the card's category
+                      setTiles(prevTiles => prevTiles.map(t => 
+                        (t.id === cardId || t.id.toString() === cardIdStr)
+                          ? { ...t, budgetCategory: targetCategoryId, budgetSubcategory: null }
+                          : t
+                      ));
+                    }
+                  };
+                  
+                  return (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={pointerWithin}
+                      onDragStart={(event) => {
+                        if (event.active.id.toString().startsWith('card-')) {
+                          const cardId = parseInt(event.active.id.toString().replace('card-', ''));
+                          setActiveCardId(cardId);
+                        }
+                      }}
+                      onDragEnd={handleCardDragEnd}
+                      onDragCancel={() => setActiveCardId(null)}
+                    >
+                      <div style={{ 
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))',
+                        gap: 24,
+                        alignItems: 'stretch',
+                        width: '100%',
+                        maxWidth: '100%',
+                      }}>
+                        {categoriesToShow.map((category) => (
+                          <DroppableCategoryTile key={category.id} category={category} />
+                        ))}
+                      </div>
+                      
+                      {/* Drag Overlay - Shows the card being dragged */}
+                      <DragOverlay zIndex={9999} dropAnimation={null}>
+                        {activeCard && activeCard.logo && (
+                          <div style={{
+                            background: '#fff',
+                            borderRadius: 8,
+                            padding: 8,
+                            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+                            border: '2px solid #1976d2',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            cursor: 'grabbing',
+                          }}>
+                            <img
+                              src={activeCard.logo}
+                              alt={activeCard.name}
+                              style={{
+                                width: 40,
+                                height: 40,
+                                objectFit: 'contain',
+                                borderRadius: 6,
+                              }}
+                            />
+                            <span style={{ fontWeight: 600, fontSize: 13, color: '#333' }}>
+                              {activeCard.name}
+                            </span>
+                          </div>
+                        )}
+                      </DragOverlay>
+                      
+                      {/* Uncategorized Cards Section */}
+                      {uncategorizedCards.length > 0 && (
+                        <div style={{ marginTop: 24 }}>
+                          <div style={{
+                            background: '#fff8e1',
+                            border: '2px solid #ffc107',
+                            borderRadius: 12,
+                            padding: '20px 24px',
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              borderBottom: '2px solid #ffc107',
+                              paddingBottom: 12,
+                              marginBottom: 16,
+                            }}>
+                              <h2 style={{ 
+                                color: '#f57c00', 
+                                fontSize: 18, 
+                                fontWeight: 700, 
+                                margin: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}>
+                                <span style={{ fontSize: 20 }}>⚠️</span>
+                                Uncategorized ({uncategorizedCards.length} cards need a category)
+                              </h2>
+                            </div>
+                            <div style={{ 
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: 12,
+                              alignContent: 'flex-start',
+                            }}>
+                              {uncategorizedCards.slice(0, 24).map((tile) => (
+                                tile.logo && <DraggableHomeCard key={tile.id} tile={tile} categoryId="uncategorized" />
+                              ))}
+                              {uncategorizedCards.length > 24 && (
+                                <div style={{
+                                  padding: '8px 12px',
+                                  background: '#f0f0f0',
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  color: '#666',
+                                }}>
+                                  +{uncategorizedCards.length - 24} more
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ 
+                              marginTop: 8, 
+                              fontSize: 12, 
+                              color: '#f57c00', 
+                              fontStyle: 'italic' 
+                            }}>
+                              💡 Tip: Drag cards to a category tile above to organize them
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </DndContext>
+                  );
+                })()}
               </div>
 
               {/* Right Sidebar - Stats & Pie Chart */}
@@ -3328,13 +4360,8 @@ function App() {
                 gap: 16,
               }}>
                 {(() => {
-                  // Filter tiles based on selected home page tab
-                  const filteredTiles = selectedHomePageTab === 'all' 
-                    ? tiles 
-                    : tiles.filter(tile => {
-                        const tab = tabs.find(t => t.name === tile.category);
-                        return tab && (tab.homePageTabId === selectedHomePageTab || !tab.homePageTabId);
-                      });
+                  // All tiles are shown (homePageTabs filtering simplified for now)
+                  const filteredTiles = tiles;
                   
                   // Get filtered upcoming payments
                   const filteredUpcomingPayments = getUpcomingPaymentsThisMonth(filteredTiles);
@@ -3351,15 +4378,8 @@ function App() {
                     sum + (t.paymentFrequency === 'Annually' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
                   );
                   
-                  // Filter active sessions for selected tab
-                  const filteredSessions = selectedHomePageTab === 'all'
-                    ? activeSessions
-                    : activeSessions.filter(session => {
-                        const tile = tiles.find(t => t.id === session.tileId);
-                        if (!tile) return false;
-                        const tab = tabs.find(t => t.name === tile.category);
-                        return tab && (tab.homePageTabId === selectedHomePageTab || !tab.homePageTabId);
-                      });
+                  // Show all active sessions (simplified filtering)
+                  const filteredSessions = activeSessions;
                   
                   return (
                     <>
@@ -3371,17 +4391,51 @@ function App() {
                   boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                   border: '2px solid #1976d2',
                 }}>
-                  <h3 style={{ 
-                    margin: '0 0 12px 0', 
-                    fontSize: 16, 
-                    fontWeight: 600, 
-                    color: '#1976d2',
+                  <div style={{ 
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
+                    justifyContent: 'space-between',
+                    marginBottom: 12,
                   }}>
-                    <span style={{ fontSize: 18 }}>🟢</span> Active Sessions ({filteredSessions.length})
-                  </h3>
+                    <h3 style={{ 
+                      margin: 0, 
+                      fontSize: 16, 
+                      fontWeight: 600, 
+                      color: '#1976d2',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}>
+                      <span style={{ fontSize: 18 }}>🟢</span> Active Sessions ({filteredSessions.length})
+                    </h3>
+                    {filteredSessions.length > 0 && (
+                      <button
+                        onClick={closeAllSessions}
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #e53935',
+                          borderRadius: 4,
+                          padding: '4px 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: '#e53935',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#e53935';
+                          e.currentTarget.style.color = '#fff';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#fff';
+                          e.currentTarget.style.color = '#e53935';
+                        }}
+                        title="Close all active sessions"
+                      >
+                        ✕ Close All
+                      </button>
+                    )}
+                  </div>
                   {filteredSessions.length === 0 ? (
                     <div style={{ fontSize: 13, color: '#666', textAlign: 'center', padding: '8px 0' }}>
                       No active sessions. Click a tile to start tracking!
@@ -3547,7 +4601,10 @@ function App() {
                                       {tile.name}
                                     </div>
                                     <div style={{ fontSize: 11, color: '#999' }}>
-                                      {tile.category}
+                                      {(() => {
+                                        const cat = budgetCategories.find(c => c.id === tile.budgetCategory);
+                                        return cat ? `${cat.icon} ${cat.name}` : tile.budgetSubcategory || '-';
+                                      })()}
                                     </div>
                                   </div>
                                   
@@ -3695,7 +4752,10 @@ function App() {
               </span>
               <span style={{ color: '#ccc' }}>/</span>
               <span style={{ color: '#666', fontWeight: 500 }}>
-                {activeTab}
+                {(() => {
+                  const cat = budgetCategories.find(c => c.id === activeTab);
+                  return cat ? `${cat.icon} ${cat.name}` : activeTab;
+                })()}
               </span>
             </div>
             
@@ -3766,43 +4826,53 @@ function App() {
                       );
                     }
                     
-                    return results.map(tile => (
-                      <div
-                        key={tile.id}
-                        onClick={() => {
-                          setActiveTab(tile.category);
-                          setSearchQuery('');
-                        }}
-                        style={{
-                          padding: '12px 16px',
-                          borderBottom: '1px solid #f0f0f0',
-                          cursor: 'pointer',
-                          transition: 'background 0.2s',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                      >
-                        <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 4 }}>
-                          {tile.name}
+                    return results.map(tile => {
+                      const category = budgetCategories.find(c => c.id === tile.budgetCategory);
+                      return (
+                        <div
+                          key={tile.id}
+                          onClick={() => {
+                            if (tile.budgetCategory) {
+                              setActiveTab(tile.budgetCategory);
+                            }
+                            setSearchQuery('');
+                          }}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f0f0f0',
+                            cursor: 'pointer',
+                            transition: 'background 0.2s',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                        >
+                          <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 4 }}>
+                            {tile.name}
+                          </div>
+                          <div style={{ fontSize: 14, color: '#666' }}>
+                            {tile.description}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                            {category ? `${category.icon} ${category.name}` : 'Uncategorized'}
+                            {tile.budgetSubcategory && ` • ${tile.budgetSubcategory}`}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 14, color: '#666' }}>
-                          {tile.description}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-                          Category: {tile.category}
-                          {tile.subcategory && ` • ${tile.subcategory}`}
-                        </div>
-                      </div>
-                    ));
+                      );
+                    });
                   })()}
                 </div>
               )}
             </div>
             
-            {/* Active Tab Title Row */}
+            {/* Active Category Title Row */}
             {activeTab !== 'APP Report' && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 24px 0', minHeight: 48, flexWrap: 'wrap', gap: 12, maxWidth: '100%' }}>
-              <h1 style={{ color: '#1976d2', fontSize: 28, fontWeight: 700, margin: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeTab}</h1>
+              <h1 style={{ color: '#1976d2', fontSize: 28, fontWeight: 700, margin: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {(() => {
+                  const cat = budgetCategories.find(c => c.id === activeTab);
+                  return cat ? `${cat.icon} ${cat.name}` : activeTab;
+                })()}
+              </h1>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 16 }}>
                 {/* Stock Ticker Button - Show on tabs with stock ticker enabled */}
                 {(() => {
@@ -5003,7 +6073,7 @@ function App() {
                         )}
                         <input
                           type="file"
-                          ref={el => (repickRefs.current[idx] = el)}
+                          ref={el => { repickRefs.current[idx] = el; }}
                           style={{ display: 'none' }}
                           // @ts-ignore
                           webkitdirectory="true"
@@ -5072,11 +6142,12 @@ function App() {
                     ];
                     
                     sortedTiles.forEach((tile) => {
+                      const cat = budgetCategories.find(c => c.id === tile.budgetCategory);
                       excelData.push([
                         tile.name,
                         tile.description || '',
                         tile.link || '',
-                        tile.category || ''
+                        cat ? `${cat.icon} ${cat.name}` : 'Uncategorized'
                       ]);
                     });
                     
@@ -5215,10 +6286,433 @@ function App() {
                         ) : '-'}
                       </div>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {tile.category || '-'}
+                        {(() => {
+                          const cat = budgetCategories.find(c => c.id === tile.budgetCategory);
+                          return cat ? `${cat.icon} ${cat.name}` : '-';
+                        })()}
                       </div>
                     </div>
                   ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* BUDGET REPORT PAGE */}
+        {mainMenu === 'reports' && activeReport === 'budget' && (
+          <div style={{ padding: '32px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <h1 style={{ color: '#1976d2', fontSize: 28, fontWeight: 700, margin: 0 }}>Budget Report</h1>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  onClick={() => {
+                    // Prepare Excel data grouped by budget type
+                    const budgetTypes: Array<{ type: string; tiles: Tile[] }> = [
+                      { type: 'Bill', tiles: tiles.filter(t => t.budgetType === 'Bill') },
+                      { type: 'Subscription', tiles: tiles.filter(t => t.budgetType === 'Subscription') },
+                      { type: 'Expense', tiles: tiles.filter(t => t.budgetType === 'Expense') },
+                      { type: 'Savings', tiles: tiles.filter(t => t.budgetType === 'Savings') },
+                      { type: 'Web Link Only', tiles: tiles.filter(t => t.isWebLinkOnly || (!t.budgetType && !t.paidSubscription)) },
+                    ];
+                    
+                    const excelData: string[][] = [
+                      ['Budget Report'],
+                      [],
+                    ];
+                    
+                    let grandTotalMonthly = 0;
+                    let grandTotalAnnual = 0;
+                    
+                    budgetTypes.forEach(({ type, tiles: groupTiles }) => {
+                      if (groupTiles.length === 0) return;
+                      
+                      const sortedTiles = [...groupTiles].sort((a, b) => a.name.localeCompare(b.name));
+                      
+                      const currentMonth = new Date().toISOString().slice(0, 7);
+                      excelData.push([type.toUpperCase()]);
+                      excelData.push(['Name', 'Description', 'Subcategory', 'Budget', 'Frequency', 'Actual', 'Difference', 'Annual']);
+                      
+                      let subtotalBudget = 0;
+                      let subtotalActual = 0;
+                      let subtotalAnnual = 0;
+                      
+                      sortedTiles.forEach(tile => {
+                        const budget = tile.budgetAmount || tile.paymentAmount || 0;
+                        const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+                        const monthlyBudget = freq === 'Monthly' ? budget : (freq === 'Annually' ? budget / 12 : 0);
+                        const annual = freq === 'Annually' ? budget : (freq === 'Monthly' ? budget * 12 : 0);
+                        const actual = tile.budgetHistory?.[currentMonth]?.actual || 0;
+                        const difference = monthlyBudget - actual;
+                        
+                        subtotalBudget += monthlyBudget;
+                        subtotalActual += actual;
+                        subtotalAnnual += annual;
+                        
+                        excelData.push([
+                          tile.name,
+                          tile.description || '',
+                          tile.budgetSubcategory || '-',
+                          monthlyBudget > 0 ? `$${monthlyBudget.toFixed(2)}` : '-',
+                          freq || '-',
+                          actual > 0 ? `$${actual.toFixed(2)}` : '-',
+                          monthlyBudget > 0 ? `$${difference.toFixed(2)}` : '-',
+                          annual > 0 ? `$${annual.toFixed(2)}` : '-',
+                        ]);
+                      });
+                      
+                      const subtotalDiff = subtotalBudget - subtotalActual;
+                      excelData.push(['', '', '', `${type} Subtotal:`, '', `$${subtotalActual.toFixed(2)}`, `$${subtotalDiff.toFixed(2)}`, `$${subtotalAnnual.toFixed(2)}`]);
+                      excelData.push([]);
+                      
+                      grandTotalMonthly += subtotalBudget;
+                      grandTotalAnnual += subtotalAnnual;
+                    });
+                    
+                    // Calculate grand total actual
+                    const currentMonthExcel = new Date().toISOString().slice(0, 7);
+                    let grandTotalActual = 0;
+                    tiles.forEach(tile => {
+                      grandTotalActual += tile.budgetHistory?.[currentMonthExcel]?.actual || 0;
+                    });
+                    const grandTotalDiff = grandTotalMonthly - grandTotalActual;
+                    excelData.push(['', '', '', 'GRAND TOTAL:', '', `$${grandTotalActual.toFixed(2)}`, `$${grandTotalDiff.toFixed(2)}`, `$${grandTotalAnnual.toFixed(2)}`]);
+                    
+                    exportToExcel(excelData, 'budget-report.xls');
+                  }}
+                  title="Export to Excel"
+                  style={{
+                    background: '#e8f5e9',
+                    color: '#2e7d32',
+                    border: '2px solid #4caf50',
+                    borderRadius: 6,
+                    padding: '10px 16px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#4caf50';
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#e8f5e9';
+                    e.currentTarget.style.color = '#2e7d32';
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  📊 Export to Excel
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  title="Print Report"
+                  style={{
+                    background: '#e3f2fd',
+                    color: '#1976d2',
+                    border: '2px solid #1976d2',
+                    borderRadius: 6,
+                    padding: '10px 16px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#1976d2';
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(25, 118, 210, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#e3f2fd';
+                    e.currentTarget.style.color = '#1976d2';
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  🖨️ Print Report
+                </button>
+              </div>
+            </div>
+            
+            {(() => {
+              // Define budget type groups with colors
+              const budgetGroups = [
+                { type: 'Bill', label: 'Bills (Fixed)', color: '#4169E1', icon: '💡' },
+                { type: 'Subscription', label: 'Subscriptions', color: '#87CEEB', icon: '🔄' },
+                { type: 'Expense', label: 'Expenses', color: '#FF6B6B', icon: '💳' },
+                { type: 'Savings', label: 'Savings', color: '#4CAF50', icon: '💰' },
+                { type: 'WebLinkOnly', label: 'Web Link Only', color: '#9E9E9E', icon: '🔗' },
+              ];
+              
+              let grandTotalMonthly = 0;
+              let grandTotalAnnual = 0;
+              
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  {budgetGroups.map(({ type, label, color, icon }) => {
+                    // Filter tiles by budget type
+                    const groupTiles = type === 'WebLinkOnly'
+                      ? tiles.filter(t => t.isWebLinkOnly || (!t.budgetType && !t.paidSubscription))
+                      : tiles.filter(t => t.budgetType === type);
+                    
+                    if (groupTiles.length === 0) return null;
+                    
+                    const sortedTiles = [...groupTiles].sort((a, b) => a.name.localeCompare(b.name));
+                    const currentMonthKey = new Date().toISOString().slice(0, 7);
+                    
+                    // Calculate subtotals
+                    let subtotalBudget = 0;
+                    let subtotalActual = 0;
+                    let subtotalAnnual = 0;
+                    
+                    sortedTiles.forEach(tile => {
+                      const amount = tile.budgetAmount || tile.paymentAmount || 0;
+                      const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+                      const actual = tile.budgetHistory?.[currentMonthKey]?.actual || 0;
+                      if (freq === 'Monthly') {
+                        subtotalBudget += amount;
+                        subtotalAnnual += amount * 12;
+                      } else if (freq === 'Annually') {
+                        subtotalBudget += amount / 12;
+                        subtotalAnnual += amount;
+                      }
+                      subtotalActual += actual;
+                    });
+                    
+                    // Keep for backward compatibility with grand total
+                    const subtotalMonthly = subtotalBudget;
+                    grandTotalMonthly += subtotalBudget;
+                    grandTotalAnnual += subtotalAnnual;
+                    
+                    return (
+                      <div key={type} style={{
+                        background: '#fff',
+                        borderRadius: 8,
+                        boxShadow: '0 2px 8px #0001',
+                        overflow: 'hidden',
+                      }}>
+                        {/* Group Header */}
+                        <div style={{
+                          background: '#fff',
+                          borderTop: `4px solid ${color}`,
+                          padding: '14px 20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 20 }}>{icon}</span>
+                            <span style={{ 
+                              fontWeight: 700, 
+                              fontSize: 16, 
+                              color: '#000',
+                            }}>
+                              {label} ({sortedTiles.length})
+                            </span>
+                          </div>
+                          <div style={{ 
+                            display: 'flex', 
+                            gap: 20, 
+                            fontWeight: 700,
+                            fontSize: 14,
+                          }}>
+                            <span style={{ color: '#333' }}>Budget: {formatCurrency(subtotalBudget)}</span>
+                            <span style={{ color: '#1976d2' }}>Actual: {formatCurrency(subtotalActual)}</span>
+                            <span style={{ color: subtotalBudget - subtotalActual >= 0 ? '#4caf50' : '#e53935' }}>
+                              Diff: {subtotalBudget - subtotalActual >= 0 ? '+' : ''}{formatCurrency(subtotalBudget - subtotalActual)}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Table Header */}
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '1.8fr 1fr 1fr 0.8fr 0.7fr 0.9fr 0.9fr 0.9fr', 
+                          gap: 8, 
+                          padding: '12px 16px',
+                          background: '#f5f5f5',
+                          fontWeight: 700, 
+                          fontSize: 12,
+                          color: '#666',
+                          borderBottom: '1px solid #e0e0e0',
+                        }}>
+                          <div>Name</div>
+                          <div>Description</div>
+                          <div>Subcategory</div>
+                          <div style={{ textAlign: 'right' }}>Budget</div>
+                          <div style={{ textAlign: 'center' }}>Freq</div>
+                          <div style={{ textAlign: 'right' }}>Actual</div>
+                          <div style={{ textAlign: 'right' }}>Difference</div>
+                          <div style={{ textAlign: 'right' }}>Annual</div>
+                        </div>
+                        
+                        {/* Table Rows */}
+                        {sortedTiles.map(tile => {
+                          const budget = tile.budgetAmount || tile.paymentAmount || 0;
+                          const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+                          const monthlyBudget = freq === 'Monthly' ? budget : (freq === 'Annually' ? budget / 12 : 0);
+                          const annual = freq === 'Annually' ? budget : (freq === 'Monthly' ? budget * 12 : 0);
+                          
+                          // Get current month's actual from budgetHistory
+                          const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM format
+                          const actual = tile.budgetHistory?.[currentMonth]?.actual || 0;
+                          const difference = monthlyBudget - actual;
+                          
+                          return (
+                            <div key={tile.id} style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: '1.8fr 1fr 1fr 0.8fr 0.7fr 0.9fr 0.9fr 0.9fr', 
+                              gap: 8, 
+                              padding: '10px 16px',
+                              borderBottom: '1px solid #f0f0f0',
+                              fontSize: 13,
+                              color: '#333',
+                              alignItems: 'center',
+                            }}>
+                              <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {tile.name}
+                              </div>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#666', fontSize: 12 }}>
+                                {tile.description || '-'}
+                              </div>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#666', fontSize: 12 }}>
+                                {tile.budgetSubcategory || '-'}
+                              </div>
+                              <div style={{ textAlign: 'right', fontWeight: 500 }}>
+                                {monthlyBudget > 0 ? formatCurrency(monthlyBudget) : '-'}
+                              </div>
+                              <div style={{ textAlign: 'center', color: '#666', fontSize: 11 }}>
+                                {freq || '-'}
+                              </div>
+                              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={actual === monthlyBudget && monthlyBudget > 0}
+                                  onChange={(e) => {
+                                    if (e.target.checked && monthlyBudget > 0) {
+                                      setTiles(prevTiles => prevTiles.map(t => {
+                                        if (t.id !== tile.id) return t;
+                                        return {
+                                          ...t,
+                                          budgetHistory: {
+                                            ...t.budgetHistory,
+                                            [currentMonth]: {
+                                              ...t.budgetHistory?.[currentMonth],
+                                              budget: monthlyBudget,
+                                              actual: monthlyBudget,
+                                            }
+                                          }
+                                        };
+                                      }));
+                                    }
+                                  }}
+                                  title="Same as Budget - Click to set Actual equal to Budget amount"
+                                  style={{
+                                    width: 14,
+                                    height: 14,
+                                    cursor: 'pointer',
+                                    accentColor: '#4caf50',
+                                  }}
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={actual || ''}
+                                  onChange={(e) => {
+                                    const newActual = e.target.value ? Math.round(parseFloat(e.target.value) * 100) / 100 : 0;
+                                    setTiles(prevTiles => prevTiles.map(t => {
+                                      if (t.id !== tile.id) return t;
+                                      return {
+                                        ...t,
+                                        budgetHistory: {
+                                          ...t.budgetHistory,
+                                          [currentMonth]: {
+                                            ...t.budgetHistory?.[currentMonth],
+                                            budget: monthlyBudget,
+                                            actual: newActual,
+                                          }
+                                        }
+                                      };
+                                    }));
+                                  }}
+                                  placeholder="0.00"
+                                  style={{
+                                    width: '65px',
+                                    padding: '4px 6px',
+                                    border: '1px solid #ddd',
+                                    borderRadius: 4,
+                                    fontSize: 12,
+                                    textAlign: 'right',
+                                  }}
+                                />
+                              </div>
+                              <div style={{ 
+                                textAlign: 'right', 
+                                fontWeight: 600,
+                                color: difference >= 0 ? '#4caf50' : '#e53935',
+                              }}>
+                                {monthlyBudget > 0 ? (
+                                  <>
+                                    {difference >= 0 ? '+' : ''}{formatCurrency(difference)}
+                                  </>
+                                ) : '-'}
+                              </div>
+                              <div style={{ textAlign: 'right', color: '#1976d2', fontWeight: 500 }}>
+                                {annual > 0 ? formatCurrency(annual) : '-'}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Grand Total */}
+                  {(() => {
+                    // Calculate grand total actual
+                    const currentMonthTotal = new Date().toISOString().slice(0, 7);
+                    let grandTotalActual = 0;
+                    tiles.forEach(tile => {
+                      grandTotalActual += tile.budgetHistory?.[currentMonthTotal]?.actual || 0;
+                    });
+                    const grandTotalDiff = grandTotalMonthly - grandTotalActual;
+                    
+                    return (
+                      <div style={{
+                        background: '#1976d2',
+                        borderRadius: 8,
+                        padding: '20px 24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}>
+                        <span style={{ fontWeight: 700, fontSize: 18, color: '#fff' }}>
+                          📊 Grand Total ({new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})
+                        </span>
+                        <div style={{ display: 'flex', gap: 24, fontWeight: 700, fontSize: 16, color: '#fff' }}>
+                          <span>Budget: {formatCurrency(grandTotalMonthly)}</span>
+                          <span style={{ color: '#bbdefb' }}>Actual: {formatCurrency(grandTotalActual)}</span>
+                          <span style={{ 
+                            color: grandTotalDiff >= 0 ? '#a5d6a7' : '#ef9a9a',
+                            fontWeight: 700,
+                          }}>
+                            {grandTotalDiff >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(grandTotalDiff))} {grandTotalDiff >= 0 ? 'Under' : 'Over'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
@@ -5391,6 +6885,177 @@ function App() {
                       );
                     });
                   })}
+                </div>
+              )}
+            </div>
+            
+            {/* Budget Categories Section */}
+            <div style={{ marginBottom: 48 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                <h2 style={{ color: '#1976d2', fontSize: 24, fontWeight: 600, margin: 0 }}>Budget Categories</h2>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={resetBudgetCategoriesToDefault}
+                    style={{
+                      background: '#fff3e0',
+                      color: '#e65100',
+                      border: '2px solid #ff9800',
+                      borderRadius: 6,
+                      padding: '10px 16px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#ff9800';
+                      e.currentTarget.style.color = '#fff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff3e0';
+                      e.currentTarget.style.color = '#e65100';
+                    }}
+                    title="Reset to default categories"
+                  >
+                    🔄 Reset to Default
+                  </button>
+                  <button
+                    onClick={openAddBudgetCategoryModal}
+                    style={{
+                      background: '#e3f2fd',
+                      color: '#1976d2',
+                      border: '2px solid #1976d2',
+                      borderRadius: 6,
+                      padding: '10px 20px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#1976d2';
+                      e.currentTarget.style.color = '#fff';
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#e3f2fd';
+                      e.currentTarget.style.color = '#1976d2';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    ➕ Add Category
+                  </button>
+                </div>
+              </div>
+              
+              {budgetCategories.length === 0 ? (
+                <div style={{ 
+                  background: '#f5f5f5', 
+                  padding: 32, 
+                  borderRadius: 8, 
+                  textAlign: 'center',
+                  color: '#666' 
+                }}>
+                  No budget categories defined. Click "Add Category" or "Reset to Default" to get started.
+                </div>
+              ) : (
+                <div style={{ 
+                  background: '#fff', 
+                  borderRadius: 8, 
+                  boxShadow: '0 2px 8px #0001',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '60px 1fr 2fr 100px', 
+                    gap: 16, 
+                    padding: 16, 
+                    background: '#f5f5f5',
+                    fontWeight: 700,
+                    fontSize: 14,
+                    borderBottom: '2px solid #e0e0e0'
+                  }}>
+                    <div style={{ textAlign: 'center' }}>Icon</div>
+                    <div>Category Name</div>
+                    <div>Subcategories</div>
+                    <div style={{ textAlign: 'center' }}>Actions</div>
+                  </div>
+                  {budgetCategories.map((category) => (
+                    <div 
+                      key={category.id}
+                      style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: '60px 1fr 2fr 100px', 
+                        gap: 16, 
+                        padding: 16, 
+                        borderBottom: '1px solid #f0f0f0',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div style={{ textAlign: 'center', fontSize: 24 }}>{category.icon}</div>
+                      <div style={{ fontWeight: 500 }}>{category.name}</div>
+                      <div style={{ 
+                        color: '#666', 
+                        fontSize: 13,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {category.subcategories.length > 0 
+                          ? category.subcategories.join(', ')
+                          : <span style={{ color: '#999', fontStyle: 'italic' }}>No subcategories</span>
+                        }
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                        <span
+                          onClick={() => openEditBudgetCategoryModal(category.id)}
+                          style={{
+                            cursor: 'pointer',
+                            fontSize: 18,
+                            color: '#1976d2',
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'scale(1.2)';
+                            e.currentTarget.style.color = '#1565c0';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.color = '#1976d2';
+                          }}
+                          title="Edit category"
+                        >
+                          ✏️
+                        </span>
+                        <span
+                          onClick={() => handleDeleteBudgetCategory(category.id)}
+                          style={{
+                            cursor: 'pointer',
+                            fontSize: 18,
+                            color: '#e53935',
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'scale(1.2)';
+                            e.currentTarget.style.color = '#c62828';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.color = '#e53935';
+                          }}
+                          title="Delete category"
+                        >
+                          🗑️
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -5715,31 +7380,58 @@ function App() {
                   </div>
                 )}
               </label>
-              <label>
-                Category:<br />
-                <select
-                  name="category"
-                  value={form.category}
-                  onChange={handleFormChange}
-                >
-                  {tabs.map(tab => (
-                    <option key={tab.name} value={tab.name}>{tab.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Subcategory (optional):<br />
-                <select
-                  name="subcategory"
-                  value={form.subcategory || ''}
-                  onChange={handleFormChange}
-                >
-                  <option value="">-- None --</option>
-                  {(tabs.find(t => t.name === form.category)?.subcategories || []).map(sub => (
-                    <option key={sub} value={sub}>{sub}</option>
-                  ))}
-                </select>
-              </label>
+              {/* Category Section - Uses Budget Categories */}
+              <div style={{ 
+                padding: 12, 
+                background: '#e3f2fd', 
+                borderRadius: 8,
+                border: '1px solid #90caf9',
+                marginTop: 8,
+              }}>
+                <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 8, fontSize: 14 }}>
+                  📂 Category (Required)
+                </div>
+                <label style={{ display: 'block' }}>
+                  <select
+                    value={form.budgetCategory || ''}
+                    onChange={e => {
+                      const categoryId = e.target.value || null;
+                      setForm(f => ({ 
+                        ...f, 
+                        budgetCategory: categoryId,
+                        budgetSubcategory: null, // Reset subcategory when category changes
+                        // Also update legacy category field for backward compatibility
+                        category: categoryId ? (budgetCategories.find(c => c.id === categoryId)?.name || '') : '',
+                      }));
+                    }}
+                    style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc' }}
+                    required
+                  >
+                    <option value="">-- Select Category --</option>
+                    {[...budgetCategories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.icon} {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                
+                {form.budgetCategory && (
+                  <label style={{ display: 'block', marginTop: 10 }}>
+                    <span style={{ fontSize: 13, color: '#555' }}>Subcategory (optional):</span>
+                    <select
+                      value={form.budgetSubcategory || ''}
+                      onChange={e => setForm(f => ({ ...f, budgetSubcategory: e.target.value || null }))}
+                      style={{ width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #ccc' }}
+                    >
+                      <option value="">-- None --</option>
+                      {(budgetCategories.find(c => c.id === form.budgetCategory)?.subcategories || []).map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
               
               {/* Budget & Payment Section - Merged */}
               <div style={{ 
@@ -5803,6 +7495,7 @@ function App() {
                     
                     {form.budgetType && (
                       <>
+                        {/* Budget Amount and Frequency */}
                         <label style={{ display: 'block', marginTop: 12 }}>
                           {form.budgetType === 'Savings' ? 'Monthly Contribution ($):' : 'Amount ($):'}<br />
                           <input
@@ -6220,6 +7913,75 @@ function App() {
                 setShowCreditCardModal(false); 
                 setEditingCreditCardId(null); 
                 setCreditCardForm({ name: '', last4: '', methodType: 'Credit Card', bankName: '', accountType: 'Checking', routingLast4: '' }); 
+              }}>
+                Cancel
+              </button>
+            </form>
+          </Modal>
+        )}
+
+        {showBudgetCategoryModal && (
+          <Modal onClose={() => { 
+            setShowBudgetCategoryModal(false); 
+            setEditingBudgetCategoryId(null); 
+            setBudgetCategoryForm({ name: '', icon: '📁', subcategories: '' }); 
+          }}>
+            <form onSubmit={handleBudgetCategoryFormSubmit}>
+              <h2>{budgetCategoryModalMode === 'add' ? 'Add Budget Category' : 'Edit Budget Category'}</h2>
+              
+              {/* Icon and Name Row */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                <label style={{ width: 80 }}>
+                  Icon:<br />
+                  <input
+                    value={budgetCategoryForm.icon}
+                    onChange={e => setBudgetCategoryForm({ ...budgetCategoryForm, icon: e.target.value })}
+                    maxLength={2}
+                    placeholder="📁"
+                    style={{ width: '100%', padding: 8, marginTop: 4, fontSize: 20, textAlign: 'center' }}
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Category Name:<br />
+                  <input
+                    value={budgetCategoryForm.name}
+                    onChange={e => setBudgetCategoryForm({ ...budgetCategoryForm, name: e.target.value })}
+                    required
+                    autoFocus
+                    maxLength={50}
+                    placeholder="e.g., Housing, Transportation"
+                    style={{ width: '100%', padding: 8, marginTop: 4 }}
+                  />
+                </label>
+              </div>
+              
+              <label style={{ display: 'block', marginBottom: 16 }}>
+                Subcategories (comma-separated):<br />
+                <textarea
+                  value={budgetCategoryForm.subcategories}
+                  onChange={e => setBudgetCategoryForm({ ...budgetCategoryForm, subcategories: e.target.value })}
+                  placeholder="e.g., Mortgage, Property Taxes, Insurance, HOA Fees"
+                  rows={4}
+                  style={{ 
+                    width: '100%', 
+                    padding: 8, 
+                    marginTop: 4, 
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+                  Enter subcategories separated by commas. Example: Groceries, Household Supplies, Personal Care
+                </div>
+              </label>
+              
+              <button type="submit" style={{ marginTop: 8 }}>
+                {budgetCategoryModalMode === 'add' ? 'Add Category' : 'Save Changes'}
+              </button>
+              <button type="button" onClick={() => { 
+                setShowBudgetCategoryModal(false); 
+                setEditingBudgetCategoryId(null); 
+                setBudgetCategoryForm({ name: '', icon: '📁', subcategories: '' }); 
               }}>
                 Cancel
               </button>
