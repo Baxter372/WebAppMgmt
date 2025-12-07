@@ -20,7 +20,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
-import wamsLogo from '/WAMLOGO.png';
+import wamsLogo from '/Finance Companion Logo.png';
+import LandingPage from './LandingPage';
 
 // ...MODAL COMPONENT...
 const Modal: React.FC<{ onClose: () => void, children: React.ReactNode }> = ({ onClose, children }) => (
@@ -601,6 +602,8 @@ function getUpcomingPaymentsNextMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
 
 // ...START OF MAIN APP...
 function App() {
+  const [showLanding, setShowLanding] = useState(true);
+  
   // --- HomePageTabs state and handlers ---
   const [homePageTabs, setHomePageTabs] = useState<HomePageTab[]>(() => {
     const saved = localStorage.getItem('homePageTabs');
@@ -3368,6 +3371,10 @@ function App() {
   };
   const repickRefs = useRef<Array<HTMLInputElement | null>>([]);
 
+  if (showLanding) {
+    return <LandingPage onLogin={() => setShowLanding(false)} />;
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', overflow: 'hidden' }}>
       {/* Sidebar */}
@@ -3386,6 +3393,8 @@ function App() {
           padding: '0 0 24px 0',
           boxShadow: '2px 0 12px #0002',
           zIndex: 100,
+          overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <div style={{
@@ -3404,10 +3413,12 @@ function App() {
             src={wamsLogo}
             alt="WAMS logo"
             style={{ 
-              maxWidth: '180px',
+              maxWidth: '120px',
               width: '100%', 
               height: 'auto', 
               objectFit: 'contain',
+              filter: 'invert(1)', 
+              mixBlendMode: 'screen',
               display: 'block',
               backgroundColor: 'transparent',
             }}
@@ -4320,7 +4331,89 @@ function App() {
                               alignContent: 'flex-start',
                             }}>
                               {uncategorizedCards.slice(0, 24).map((tile) => (
-                                tile.logo && <DraggableHomeCard key={tile.id} tile={tile} categoryId="uncategorized" />
+                                tile.logo 
+                                  ? <DraggableHomeCard key={tile.id} tile={tile} categoryId="uncategorized" />
+                                  : (
+                                    <div
+                                      key={tile.id}
+                                      style={{
+                                        position: 'relative',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        padding: '8px 12px',
+                                        paddingRight: 32,
+                                        background: '#fff',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        border: '1px solid #e0e0e0',
+                                        transition: 'all 0.2s ease',
+                                      }}
+                                      onClick={() => handleEditTile(tile.id)}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = '#1976d2';
+                                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(25, 118, 210, 0.2)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = '#e0e0e0';
+                                        e.currentTarget.style.boxShadow = 'none';
+                                      }}
+                                      title="Click to edit and assign a category"
+                                    >
+                                      <span style={{ 
+                                        width: 24, 
+                                        height: 24, 
+                                        background: '#e0e0e0', 
+                                        borderRadius: 4,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: 12,
+                                        color: '#666',
+                                      }}>
+                                        {tile.name.charAt(0).toUpperCase()}
+                                      </span>
+                                      <span style={{ fontSize: 13, fontWeight: 500, color: '#333' }}>
+                                        {tile.name}
+                                      </span>
+                                      {/* Delete button */}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteTile(tile.id);
+                                        }}
+                                        style={{
+                                          position: 'absolute',
+                                          right: 4,
+                                          top: '50%',
+                                          transform: 'translateY(-50%)',
+                                          width: 20,
+                                          height: 20,
+                                          borderRadius: '50%',
+                                          border: 'none',
+                                          background: '#ffebee',
+                                          color: '#e53935',
+                                          fontSize: 12,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'all 0.2s ease',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = '#e53935';
+                                          e.currentTarget.style.color = '#fff';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = '#ffebee';
+                                          e.currentTarget.style.color = '#e53935';
+                                        }}
+                                        title="Delete this card"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  )
                               ))}
                               {uncategorizedCards.length > 24 && (
                                 <div style={{
@@ -4528,10 +4621,10 @@ function App() {
                         }}>
                           <div>
                             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#333' }}>
-                              💳 {monthName}
+                              💳 Payments Due for {monthName}
                             </h3>
                             <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                              {filteredUpcomingPayments.length} payment{filteredUpcomingPayments.length !== 1 ? 's' : ''} due
+                              {filteredUpcomingPayments.length} payment{filteredUpcomingPayments.length !== 1 ? 's' : ''} scheduled
                             </div>
                           </div>
                           <div style={{ 
