@@ -73,6 +73,10 @@ type Tile = {
   };
   // Home Page Tab assignment
   homePageTabId?: string | null;  // Which home page tab this card belongs to
+  // Cancellation tracking
+  isCancelled?: boolean;
+  cancellationDate?: string | null;
+  previousBudgetCategory?: string | null;  // Store original category before cancellation
 };
 type HomePageTab = { id: string; name: string; };
 type Tab = { name: string; subcategories?: string[]; hasStockTicker?: boolean; homePageTabId?: string; };
@@ -100,6 +104,7 @@ const defaultBudgetCategories: BudgetCategory[] = [
   { id: 'productivity', name: 'Tools & Productivity', icon: '🔧', subcategories: ['Email', 'Calendar', 'Notes', 'File Storage', 'Project Management', 'Collaboration', 'Utilities'] },
   { id: 'transportation', name: 'Transportation', icon: '🚗', subcategories: ['Car Payment', 'Auto Insurance', 'Gas/Fuel', 'Car Maintenance', 'Public Transit', 'Tolls/Parking', 'Registration/Fees'] },
   { id: 'utilities', name: 'Utilities', icon: '💡', subcategories: ['Electricity', 'Gas/Propane', 'Water/Sewer', 'Trash/Recycling', 'Internet', 'Cable/Streaming', 'Cell Phone'] },
+  { id: 'cancelled', name: '🚫 Cancelled Subscriptions', icon: '🚫', subcategories: ['Cancelled This Month', 'Cancelled This Year', 'Archived'] },
 ];
 type PaymentMethodType = 'Credit Card' | 'ACH' | 'Check' | 'Cash';
 type CreditCard = { 
@@ -642,6 +647,7 @@ function App() {
   }, [homePageTabs]);
   
   const [selectedHomePageTab, setSelectedHomePageTab] = useState<string>('all');
+  const [homePageView, setHomePageView] = useState<'tiles' | 'budget'>('tiles');
   
   // --- Credit Cards state and handlers ---
   const [creditCards, setCreditCards] = useState<CreditCard[]>(() => {
@@ -656,7 +662,12 @@ function App() {
   // --- Budget Categories state and handlers ---
   const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>(() => {
     const saved = localStorage.getItem('budgetCategories');
-    return saved ? JSON.parse(saved) : defaultBudgetCategories;
+    let categories = saved ? JSON.parse(saved) : defaultBudgetCategories;
+    // Ensure "Cancelled Subscriptions" category always exists
+    if (!categories.find((c: BudgetCategory) => c.id === 'cancelled')) {
+      categories = [...categories, { id: 'cancelled', name: '🚫 Cancelled Subscriptions', icon: '🚫', subcategories: ['Cancelled This Month', 'Cancelled This Year', 'Archived'] }];
+    }
+    return categories;
   });
   
   useEffect(() => {
@@ -702,7 +713,9 @@ function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState<string>('');
-  const [activeReport, setActiveReport] = useState<'cost' | 'list' | 'budget'>('cost');
+  const [activeReport, setActiveReport] = useState<'cost' | 'list' | 'budget' | 'calendar'>('cost');
+  const [calendarReportYear, setCalendarReportYear] = useState<number>(new Date().getFullYear());
+  const [calendarReportMonth, setCalendarReportMonth] = useState<number>(new Date().getMonth()); // 0-11
 
   // --- Stock Ticker State ---
   // Major market indices (always shown first)
@@ -1172,6 +1185,74 @@ function App() {
                   >
                     ✏️
                   </button>
+                  {/* Cancel Subscription button - for paid subscriptions */}
+                  {(tile.paidSubscription || tile.budgetType === 'Subscription' || tile.budgetType === 'Bill') && !tile.isCancelled && (
+                    <button
+                      className="home-card-cancel-btn"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openCancellationModal(tile.id);
+                      }}
+                      title="Cancel subscription"
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: 18,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#e53935',
+                        color: '#fff',
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: 0,
+                        transition: 'opacity 0.2s ease, transform 0.2s ease',
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      }}
+                    >
+                      🚫
+                    </button>
+                  )}
+                  {/* Restore button - for cancelled subscriptions */}
+                  {tile.isCancelled && (
+                    <button
+                      className="home-card-restore-btn"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        restoreSubscription(tile.id);
+                      }}
+                      title="Restore subscription"
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: 18,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#4caf50',
+                        color: '#fff',
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: 0,
+                        transition: 'opacity 0.2s ease, transform 0.2s ease',
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      }}
+                    >
+                      ♻️
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1342,6 +1423,74 @@ function App() {
         >
           ✏️
         </button>
+        {/* Cancel Subscription button - for paid subscriptions */}
+        {(tile.paidSubscription || tile.budgetType === 'Subscription' || tile.budgetType === 'Bill') && !tile.isCancelled && (
+          <button
+            className="home-card-cancel-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openCancellationModal(tile.id);
+            }}
+            title="Cancel subscription"
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: 18,
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              border: 'none',
+              background: '#e53935',
+              color: '#fff',
+              fontSize: 10,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0,
+              transition: 'opacity 0.2s ease, transform 0.2s ease',
+              zIndex: 10,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            }}
+          >
+            🚫
+          </button>
+        )}
+        {/* Restore button - for cancelled subscriptions */}
+        {tile.isCancelled && (
+          <button
+            className="home-card-restore-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              restoreSubscription(tile.id);
+            }}
+            title="Restore subscription"
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: 18,
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              border: 'none',
+              background: '#4caf50',
+              color: '#fff',
+              fontSize: 10,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0,
+              transition: 'opacity 0.2s ease, transform 0.2s ease',
+              zIndex: 10,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            }}
+          >
+            ♻️
+          </button>
+        )}
       </div>
     );
   }
@@ -1879,6 +2028,74 @@ function App() {
                   >
                     ✏️
                   </button>
+                  {/* Cancel Subscription button - for paid subscriptions */}
+                  {(tile.paidSubscription || tile.budgetType === 'Subscription' || tile.budgetType === 'Bill') && !tile.isCancelled && (
+                    <button
+                      className="home-card-cancel-btn"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openCancellationModal(tile.id);
+                      }}
+                      title="Cancel subscription"
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: 18,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#e53935',
+                        color: '#fff',
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: 0,
+                        transition: 'opacity 0.2s ease, transform 0.2s ease',
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      }}
+                    >
+                      🚫
+                    </button>
+                  )}
+                  {/* Restore button - for cancelled subscriptions */}
+                  {tile.isCancelled && (
+                    <button
+                      className="home-card-restore-btn"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        restoreSubscription(tile.id);
+                      }}
+                      title="Restore subscription"
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: 18,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#4caf50',
+                        color: '#fff',
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: 0,
+                        transition: 'opacity 0.2s ease, transform 0.2s ease',
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      }}
+                    >
+                      ♻️
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1911,6 +2128,11 @@ function App() {
   const [tabModalMode, setTabModalMode] = useState<'add' | 'edit'>('add');
   const [tabHasStockTicker, setTabHasStockTicker] = useState(false);
   const [tabHomePageTabId, setTabHomePageTabId] = useState<string>('all');
+  
+  // Cancellation Modal State
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
+  const [cancellationTileId, setCancellationTileId] = useState<number | null>(null);
+  const [cancellationDate, setCancellationDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [form, setForm] = useState<Omit<Tile, 'id'>>({
     name: '',
     description: '',
@@ -2124,6 +2346,44 @@ function App() {
   const [_dragOverTab, setDragOverTab] = useState<string | null>(null);
   const [dragOverSubcategory, setDragOverSubcategory] = useState<string | null>(null);
   const [mainMenu, setMainMenu] = useState<'home' | 'files' | 'settings' | 'reports'>('home');
+  
+  // Resizable sidebar width
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('sidebarWidth');
+    return saved ? parseInt(saved) : 220;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  
+  useEffect(() => {
+    localStorage.setItem('sidebarWidth', String(sidebarWidth));
+  }, [sidebarWidth]);
+  
+  // Handle sidebar resize
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.min(Math.max(e.clientX, 180), 400); // Min 180px, Max 400px
+      setSidebarWidth(newWidth);
+    };
+    
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+    
+    if (isResizing) {
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
   const [pickedFolders, setPickedFolders] = useState<Array<{
     name: string;
     path: string;
@@ -2247,6 +2507,71 @@ function App() {
     setShowDeleteModal(false);
     setTileToDeleteId(null);
   };
+
+  // Open cancellation modal for a tile
+  const openCancellationModal = (tileId: number) => {
+    setCancellationTileId(tileId);
+    setCancellationDate(new Date().toISOString().split('T')[0]);
+    setShowCancellationModal(true);
+  };
+
+  // Confirm and process subscription cancellation
+  const confirmCancellation = () => {
+    if (cancellationTileId === null) return;
+    
+    const tile = tiles.find(t => t.id === cancellationTileId);
+    if (!tile) return;
+    
+    // Calculate the monthly savings amount
+    const amount = tile.budgetAmount || tile.paymentAmount || 0;
+    const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+    const monthlySavings = freq === 'Monthly' ? amount : (freq === 'Annually' ? amount / 12 : 0);
+    
+    // Get the cancellation month key for budget history
+    const cancelDate = new Date(cancellationDate);
+    const monthKey = `${cancelDate.getFullYear()}-${String(cancelDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Update the tile
+    setTiles(prevTiles => prevTiles.map(t => {
+      if (t.id !== cancellationTileId) return t;
+      return {
+        ...t,
+        isCancelled: true,
+        cancellationDate: cancellationDate,
+        previousBudgetCategory: t.budgetCategory, // Store original category
+        budgetCategory: 'cancelled', // Move to cancelled category
+        // Add negative entry to budget history to show savings
+        budgetHistory: {
+          ...t.budgetHistory,
+          [monthKey]: {
+            ...t.budgetHistory?.[monthKey],
+            budget: 0,
+            actual: -(monthlySavings), // Negative to show savings
+            notes: `Cancelled on ${cancellationDate}`,
+          }
+        }
+      };
+    }));
+    
+    // Close modal
+    setShowCancellationModal(false);
+    setCancellationTileId(null);
+  };
+
+  // Restore a cancelled subscription
+  const restoreSubscription = (tileId: number) => {
+    setTiles(prevTiles => prevTiles.map(t => {
+      if (t.id !== tileId) return t;
+      return {
+        ...t,
+        isCancelled: false,
+        cancellationDate: null,
+        budgetCategory: t.previousBudgetCategory || null, // Restore original category
+        previousBudgetCategory: null,
+      };
+    }));
+  };
+
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const target = e.target;
     const name = target.name;
@@ -3421,20 +3746,46 @@ function App() {
           position: 'fixed',
           left: 0,
           top: 0,
-          width: 220,
+          width: sidebarWidth,
           height: '100vh',
           background: 'linear-gradient(180deg, #0b1440 0%, #0a2f86 45%, #082a72 75%, #071f5e 100%)',
           color: '#fff',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'stretch',
-          padding: '0 0 24px 0',
+          padding: '0 8px 24px 0',
           boxShadow: '2px 0 12px #0002',
           zIndex: 100,
           overflowY: 'auto',
           overflowX: 'hidden',
         }}
       >
+        {/* Resize Handle */}
+        <div
+          onMouseDown={() => setIsResizing(true)}
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            width: 8,
+            height: '100%',
+            cursor: 'col-resize',
+            background: isResizing ? '#64b5f6' : 'transparent',
+            transition: 'background 0.2s ease',
+            zIndex: 101,
+          }}
+          onMouseEnter={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = '#64b5f644';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = 'transparent';
+            }
+          }}
+          title="Drag to resize sidebar"
+        />
         <div style={{
           fontWeight: 700,
           fontSize: 24,
@@ -3496,7 +3847,7 @@ function App() {
             <span style={{ fontSize: 22, marginRight: 12 }}>🏠</span> Home Page
           </div>
           
-          {/* Home Page Tabs Hierarchical Submenu */}
+          {/* Budget Categories Submenu - Shows categories that have tiles */}
           {mainMenu === 'home' && (
             <div style={{ marginLeft: 24, marginTop: 12 }}>
               {/* Divider */}
@@ -3506,110 +3857,96 @@ function App() {
                 marginBottom: 12 
               }}></div>
               
-              {homePageTabs.map((homePageTab) => {
-                const isExpanded = expandedHomePageTabs.has(homePageTab.id);
-                const tabsInThisHomePageTab = tabs.filter(tab => 
-                  homePageTab.id === 'all' 
-                    ? (!tab.homePageTabId || tab.homePageTabId === 'all')
-                    : tab.homePageTabId === homePageTab.id
-                );
+              {/* All Web Tiles - shows all cards */}
+              <div style={{ marginBottom: 8 }}>
+                <div
+                  onClick={() => { setMainMenu('home'); setActiveTab(''); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '8px 8px',
+                    cursor: 'pointer',
+                    color: activeTab === '' ? '#fff' : '#bbdefb',
+                    fontWeight: 600,
+                    fontSize: 15,
+                    borderRadius: 6,
+                    background: activeTab === '' ? '#64b5f6' : 'none',
+                    transition: 'background 0.2s, color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== '') {
+                      e.currentTarget.style.background = '#64b5f622';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== '') {
+                      e.currentTarget.style.background = 'none';
+                    }
+                  }}
+                >
+                  <span style={{ fontSize: 14, marginRight: 8 }}>▼</span>
+                  <span style={{ flex: 1 }}>All Web Tiles</span>
+                  <span style={{ fontSize: 12, opacity: 0.7, marginLeft: 4 }}>
+                    ({tiles.length})
+                  </span>
+                </div>
                 
-                return (
-                  <div key={homePageTab.id} style={{ marginBottom: 8 }}>
-                    {/* Home Page Tab Header */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '8px 8px',
-                        cursor: 'pointer',
-                        color: '#bbdefb',
-                        fontWeight: 600,
-                        fontSize: 15,
-                        borderRadius: 6,
-                        transition: 'background 0.2s, color 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#64b5f622';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'none';
-                      }}
-                    >
-                      <span 
-                        onClick={() => toggleHomePageTabExpanded(homePageTab.id)}
-                        style={{ 
-                          fontSize: 14, 
-                          marginRight: 8,
-                          transition: 'transform 0.2s',
-                          display: 'inline-block',
-                          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
-                        }}
-                      >
-                        ▶
-                      </span>
-                      <span 
-                        onClick={() => toggleHomePageTabExpanded(homePageTab.id)}
-                        style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      >
-                        {homePageTab.name}
-                      </span>
-                      {tabsInThisHomePageTab.length > 0 && (
-                        <span style={{ fontSize: 12, opacity: 0.7, marginLeft: 4 }}>
-                          ({tabsInThisHomePageTab.length})
-                        </span>
-                      )}
+                {/* Budget Categories under All Web Tiles */}
+                <div style={{ marginLeft: 16, marginTop: 4 }}>
+                  {budgetCategories
+                    .filter(cat => tiles.some(t => t.budgetCategory === cat.id))
+                    .map((category) => {
+                      const categoryTiles = tiles.filter(t => t.budgetCategory === category.id);
+                      return (
+                        <div
+                          key={category.id}
+                          onClick={() => { setMainMenu('home'); setActiveTab(category.id); }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '6px 0 6px 8px',
+                            cursor: 'pointer',
+                            color: activeTab === category.id ? '#fff' : '#bbdefb',
+                            fontWeight: activeTab === category.id ? 700 : 500,
+                            background: activeTab === category.id ? '#64b5f6' : 'none',
+                            borderRadius: 6,
+                            marginBottom: 2,
+                            fontSize: 14,
+                            transition: 'background 0.2s, color 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (activeTab !== category.id) {
+                              e.currentTarget.style.background = '#64b5f633';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (activeTab !== category.id) {
+                              e.currentTarget.style.background = 'none';
+                            }
+                          }}
+                        >
+                          <span style={{ marginRight: 6 }}>{category.icon || '📁'}</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {category.name}
+                          </span>
+                          <span style={{ fontSize: 11, opacity: 0.7 }}>
+                            {categoryTiles.length}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  {!budgetCategories.some(cat => tiles.some(t => t.budgetCategory === cat.id)) && (
+                    <div style={{ 
+                      padding: '6px 8px', 
+                      color: '#64b5f688', 
+                      fontSize: 13, 
+                      fontStyle: 'italic' 
+                    }}>
+                      No categorized tiles
                     </div>
-                    
-                    {/* Web Tiles under this Home Page Tab */}
-                    {isExpanded && (
-                      <div style={{ marginLeft: 16, marginTop: 4 }}>
-                        {tabsInThisHomePageTab.map((tab) => (
-                          <div
-                            key={tab.name}
-                            onClick={() => { setMainMenu('home'); setActiveTab(tab.name); }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              padding: '6px 0 6px 8px',
-                              cursor: 'pointer',
-                              color: activeTab === tab.name ? '#fff' : '#bbdefb',
-                              fontWeight: activeTab === tab.name ? 700 : 500,
-                              background: activeTab === tab.name ? '#64b5f6' : 'none',
-                              borderRadius: 6,
-                              marginBottom: 2,
-                              fontSize: 14,
-                              transition: 'background 0.2s, color 0.2s',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (activeTab !== tab.name) {
-                                e.currentTarget.style.background = '#64b5f633';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (activeTab !== tab.name) {
-                                e.currentTarget.style.background = 'none';
-                              }
-                            }}
-                          >
-                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tab.name}</span>
-                          </div>
-                        ))}
-                        {tabsInThisHomePageTab.length === 0 && (
-                          <div style={{ 
-                            padding: '6px 8px', 
-                            color: '#64b5f688', 
-                            fontSize: 13, 
-                            fontStyle: 'italic' 
-                          }}>
-                            No Web Tiles
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              </div>
               
             </div>
           )}
@@ -3770,6 +4107,7 @@ function App() {
                   background: activeReport === 'budget' ? '#64b5f6' : 'none',
                   borderRadius: 6,
                   fontSize: 14,
+                  marginBottom: 2,
                   transition: 'background 0.2s, color 0.2s',
                 }}
                 onMouseEnter={(e) => {
@@ -3785,6 +4123,33 @@ function App() {
               >
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Budget Report</span>
               </div>
+              <div
+                onClick={() => { setMainMenu('reports'); setActiveReport('calendar'); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '8px 0 8px 8px',
+                  cursor: 'pointer',
+                  color: activeReport === 'calendar' ? '#fff' : '#bbdefb',
+                  fontWeight: activeReport === 'calendar' ? 700 : 500,
+                  background: activeReport === 'calendar' ? '#64b5f6' : 'none',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  transition: 'background 0.2s, color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (activeReport !== 'calendar') {
+                    e.currentTarget.style.background = '#64b5f633';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeReport !== 'calendar') {
+                    e.currentTarget.style.background = 'none';
+                  }
+                }}
+              >
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📅 Calendar Year</span>
+              </div>
             </div>
           )}
           </div>
@@ -3792,7 +4157,7 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <div style={{ marginLeft: 220, width: 'calc(100vw - 220px)', minHeight: '100vh', position: 'relative', padding: '0' }}>
+      <div style={{ marginLeft: sidebarWidth, width: `calc(100vw - ${sidebarWidth}px)`, minHeight: '100vh', position: 'relative', padding: '0' }}>
         <div className="header" style={{ 
           display: 'flex', 
           alignItems: 'center', 
@@ -3961,7 +4326,93 @@ function App() {
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 16 }}>
-              <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0, flexShrink: 0 }}>Home Page</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0, flexShrink: 0 }}>Home Page</h1>
+                  {activeTab && activeTab !== '' && (
+                    <>
+                      <span style={{ color: '#666', fontSize: 24 }}>›</span>
+                      <span style={{ 
+                        color: '#1976d2', 
+                        fontSize: 20, 
+                        fontWeight: 600,
+                        background: '#e3f2fd',
+                        padding: '4px 12px',
+                        borderRadius: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}>
+                        {budgetCategories.find(c => c.id === activeTab)?.icon || '📁'}
+                        {budgetCategories.find(c => c.id === activeTab)?.name || activeTab}
+                        <button
+                          onClick={() => setActiveTab('')}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#1976d2',
+                            cursor: 'pointer',
+                            padding: '0 0 0 4px',
+                            fontSize: 16,
+                            fontWeight: 700,
+                          }}
+                          title="Show all categories"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </>
+                  )}
+                </div>
+                
+                {/* View Toggle Tabs */}
+                <div style={{ 
+                  display: 'flex', 
+                  gap: 4,
+                  background: '#f0f0f0',
+                  padding: 4,
+                  borderRadius: 8,
+                }}>
+                  <button
+                    onClick={() => setHomePageView('tiles')}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: 6,
+                      background: homePageView === 'tiles' ? '#1976d2' : 'transparent',
+                      color: homePageView === 'tiles' ? '#fff' : '#666',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    🏠 Web Tiles
+                  </button>
+                  <button
+                    onClick={() => setHomePageView('budget')}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: 6,
+                      background: homePageView === 'budget' ? '#1976d2' : 'transparent',
+                      color: homePageView === 'budget' ? '#fff' : '#666',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    📅 Calendar Budget
+                  </button>
+                </div>
+              </div>
               
               {/* Spacer to push search to the right */}
               <div style={{ flex: 1 }} />
@@ -4160,6 +4611,9 @@ function App() {
               marginBottom: 24 
             }}></div>
             
+            {/* Conditional Content Based on View Mode */}
+            {homePageView === 'tiles' && (
+              <>
             {/* Home Page Tab Selector */}
             {homePageTabs.length > 1 && (
               <div style={{ 
@@ -4242,18 +4696,33 @@ function App() {
                 {/* Get categories that have at least one card */}
                 {(() => {
                   // Filter tiles based on selected home page tab
-                  const filteredByTab = selectedHomePageTab === 'all'
+                  let filteredByTab = selectedHomePageTab === 'all'
                     ? tiles
                     : tiles.filter(t => t.homePageTabId === selectedHomePageTab || (!t.homePageTabId && selectedHomePageTab === 'all'));
                   
-                  // Show all categories when dragging OR when there are uncategorized cards that need a home
-                  const hasUncategorizedCards = filteredByTab.some(t => !t.budgetCategory);
-                  const categoriesToShow = (activeCardId || hasUncategorizedCards)
-                    ? budgetCategories // Show all categories when dragging or when cards need categorizing
-                    : budgetCategories.filter(cat => filteredByTab.some(t => t.budgetCategory === cat.id));
+                  // Also filter by activeTab if it's set to a budget category
+                  if (activeTab && activeTab !== '') {
+                    filteredByTab = filteredByTab.filter(t => t.budgetCategory === activeTab);
+                  }
                   
-                  // Also check for uncategorized cards (cards without budgetCategory)
-                  const uncategorizedCards = filteredByTab.filter(t => !t.budgetCategory);
+                  // Show all categories when dragging OR when there are uncategorized cards that need a home
+                  const hasUncategorizedCards = tiles.some(t => !t.budgetCategory);
+                  
+                  // If filtering by a specific category, only show that category
+                  let categoriesToShow;
+                  if (activeTab && activeTab !== '') {
+                    categoriesToShow = budgetCategories.filter(cat => cat.id === activeTab);
+                  } else if (activeCardId || hasUncategorizedCards) {
+                    categoriesToShow = budgetCategories; // Show all categories when dragging or when cards need categorizing
+                  } else {
+                    categoriesToShow = budgetCategories.filter(cat => filteredByTab.some(t => t.budgetCategory === cat.id));
+                  }
+                  
+                  // Also check for uncategorized cards (cards without budgetCategory) - only show when viewing all
+                  const uncategorizedCards = activeTab === '' ? tiles.filter(t => !t.budgetCategory) : [];
+                  
+                  // Get cancelled subscriptions for display
+                  const cancelledCards = tiles.filter(t => t.budgetCategory === 'cancelled' || t.cancellationDate);
                   
                   // Handler for card drag between categories
                   const handleCardDragEnd = (event: any) => {
@@ -4482,6 +4951,166 @@ function App() {
                           </div>
                         </div>
                       )}
+                      
+                      {/* Cancelled Subscriptions Section */}
+                      {cancelledCards.length > 0 && (
+                        <div style={{ marginTop: 24 }}>
+                          <div style={{
+                            background: '#fce4ec',
+                            border: '2px solid #e91e63',
+                            borderRadius: 12,
+                            padding: '20px 24px',
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              borderBottom: '2px solid #e91e63',
+                              paddingBottom: 12,
+                              marginBottom: 16,
+                            }}>
+                              <h2 style={{ 
+                                color: '#c2185b', 
+                                fontSize: 18, 
+                                fontWeight: 700, 
+                                margin: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}>
+                                <span style={{ fontSize: 20 }}>🚫</span>
+                                Cancelled Subscriptions ({cancelledCards.length})
+                              </h2>
+                              <div style={{ fontSize: 12, color: '#c2185b', fontWeight: 600 }}>
+                                💰 Tracking your savings
+                              </div>
+                            </div>
+                            <div style={{ 
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: 12,
+                              alignContent: 'flex-start',
+                            }}>
+                              {cancelledCards.map((tile) => (
+                                <div
+                                  key={tile.id}
+                                  style={{
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    padding: '10px 14px',
+                                    background: '#fff',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    border: '1px solid #f8bbd9',
+                                    transition: 'all 0.2s ease',
+                                    minWidth: 180,
+                                  }}
+                                  onClick={() => handleEditTile(tile.id)}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = '#e91e63';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(233, 30, 99, 0.2)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = '#f8bbd9';
+                                    e.currentTarget.style.boxShadow = 'none';
+                                  }}
+                                  title={`Cancelled: ${tile.cancellationDate ? new Date(tile.cancellationDate).toLocaleDateString() : 'Date not set'}`}
+                                >
+                                  {tile.logo ? (
+                                    <img 
+                                      src={tile.logo} 
+                                      alt={tile.name}
+                                      style={{ 
+                                        width: 32, 
+                                        height: 32, 
+                                        borderRadius: 6,
+                                        objectFit: 'contain',
+                                        opacity: 0.6,
+                                        filter: 'grayscale(50%)',
+                                      }}
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                  ) : (
+                                    <span style={{ 
+                                      width: 32, 
+                                      height: 32, 
+                                      background: '#f0f0f0', 
+                                      borderRadius: 6,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: 14,
+                                      color: '#999',
+                                    }}>
+                                      {tile.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  )}
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ 
+                                      fontSize: 13, 
+                                      fontWeight: 600, 
+                                      color: '#666',
+                                      textDecoration: 'line-through',
+                                    }}>
+                                      {tile.name}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#e91e63', fontWeight: 500 }}>
+                                      {tile.cancellationDate 
+                                        ? `Cancelled: ${new Date(tile.cancellationDate).toLocaleDateString()}`
+                                        : 'Cancelled'
+                                      }
+                                    </div>
+                                  </div>
+                                  {/* Restore button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      restoreSubscription(tile.id);
+                                    }}
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: 4,
+                                      border: 'none',
+                                      background: '#e8f5e9',
+                                      color: '#2e7d32',
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s ease',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.background = '#2e7d32';
+                                      e.currentTarget.style.color = '#fff';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.background = '#e8f5e9';
+                                      e.currentTarget.style.color = '#2e7d32';
+                                    }}
+                                    title="Restore this subscription"
+                                  >
+                                    ♻️ Restore
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ 
+                              marginTop: 12, 
+                              fontSize: 12, 
+                              color: '#c2185b', 
+                              fontStyle: 'italic' 
+                            }}>
+                              💡 Click a card to view details or use the Restore button to reactivate
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </DndContext>
                   );
                 })()}
@@ -4514,11 +5143,59 @@ function App() {
                     sum + (t.paymentFrequency === 'Annually' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
                   );
                   
+                  // Calculate annual savings from cancelled subscriptions
+                  const cancelledTiles = tiles.filter(t => t.isCancelled || t.budgetCategory === 'cancelled');
+                  const annualSavings = cancelledTiles.reduce((sum, t) => {
+                    const amount = t.budgetAmount || t.paymentAmount || 0;
+                    const freq = t.budgetPeriod || t.paymentFrequency || '';
+                    if (freq === 'Monthly') {
+                      return sum + (amount * 12); // Monthly savings * 12 = annual
+                    } else if (freq === 'Annually') {
+                      return sum + amount;
+                    }
+                    return sum;
+                  }, 0);
+                  
                   // Show all active sessions (simplified filtering)
                   const filteredSessions = activeSessions;
                   
                   return (
                     <>
+                {/* Annual Savings Card - at top */}
+                {annualSavings > 0 && (
+                <div style={{
+                  background: '#e8f5e9',
+                  padding: '16px 20px',
+                  borderRadius: 8,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  transition: 'all 0.2s ease',
+                  cursor: 'pointer',
+                  border: '2px solid #4caf50',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(76,175,80,0.25)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+                }}>
+                  <div style={{ fontSize: 32 }}>💚</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: '#2e7d32', marginBottom: 2 }}>Annual Savings</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#2e7d32' }}>
+                      {formatCurrency(annualSavings)}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#66bb6a', marginTop: 2 }}>
+                      {cancelledTiles.length} cancelled subscription{cancelledTiles.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                </div>
+                )}
+
                 {/* Active Sessions */}
                 <div style={{
                   background: '#e3f2fd',
@@ -4859,6 +5536,652 @@ function App() {
                 })()}
               </div>
             </div>
+            </>
+            )}
+
+            {/* Calendar Budget View */}
+            {homePageView === 'budget' && (
+              <div style={{ marginTop: 0 }}>
+                {/* Year Selector and Month Tabs */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => setCalendarReportYear(y => y - 1)}
+                      style={{
+                        background: '#e3f2fd',
+                        color: '#1976d2',
+                        border: 'none',
+                        borderRadius: 4,
+                        padding: '6px 12px',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ◀
+                    </button>
+                    <span style={{ 
+                      fontSize: 20, 
+                      fontWeight: 700, 
+                      color: '#1976d2',
+                      minWidth: 60,
+                      textAlign: 'center',
+                    }}>
+                      {calendarReportYear}
+                    </span>
+                    <button
+                      onClick={() => setCalendarReportYear(y => y + 1)}
+                      style={{
+                        background: '#e3f2fd',
+                        color: '#1976d2',
+                        border: 'none',
+                        borderRadius: 4,
+                        padding: '6px 12px',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ▶
+                    </button>
+                  </div>
+                  
+                  {/* Month Tabs */}
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: 2,
+                    flex: 1,
+                  }}>
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
+                      const isActive = calendarReportMonth === index;
+                      const monthKey = `${calendarReportYear}-${String(index + 1).padStart(2, '0')}`;
+                      const hasData = tiles.some(t => (t.budgetHistory?.[monthKey]?.actual || 0) > 0);
+                      
+                      return (
+                        <button
+                          key={month}
+                          onClick={() => setCalendarReportMonth(index)}
+                          style={{
+                            padding: '8px 12px',
+                            border: 'none',
+                            background: isActive ? '#1976d2' : '#f5f5f5',
+                            color: isActive ? '#fff' : '#666',
+                            fontWeight: isActive ? 700 : 500,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            borderRadius: 6,
+                            position: 'relative',
+                            transition: 'all 0.2s ease',
+                            flex: 1,
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.background = '#e3f2fd';
+                              e.currentTarget.style.color = '#1976d2';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.background = '#f5f5f5';
+                              e.currentTarget.style.color = '#666';
+                            }
+                          }}
+                        >
+                          {month}
+                          {hasData && (
+                            <span style={{
+                              position: 'absolute',
+                              top: 2,
+                              right: 2,
+                              width: 5,
+                              height: 5,
+                              background: isActive ? '#90caf9' : '#4caf50',
+                              borderRadius: '50%',
+                            }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Budget Table - Simplified for Home Page */}
+                {(() => {
+                  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                  const monthKey = `${calendarReportYear}-${String(calendarReportMonth + 1).padStart(2, '0')}`;
+                  
+                  // Get all tiles with budget info
+                  const budgetTiles = tiles.filter(t => t.budgetAmount || t.paymentAmount || t.budgetType);
+                  const sortedTiles = [...budgetTiles].sort((a, b) => {
+                    const catA = a.budgetCategory || 'zzz';
+                    const catB = b.budgetCategory || 'zzz';
+                    if (catA !== catB) return catA.localeCompare(catB);
+                    return a.name.localeCompare(b.name);
+                  });
+                  
+                  // Group by category
+                  const groupedByCategory: { [key: string]: Tile[] } = {};
+                  sortedTiles.forEach(tile => {
+                    const catId = tile.budgetCategory || 'uncategorized';
+                    if (!groupedByCategory[catId]) {
+                      groupedByCategory[catId] = [];
+                    }
+                    groupedByCategory[catId].push(tile);
+                  });
+                  
+                  let grandTotalBudget = 0;
+                  let grandTotalActual = 0;
+                  
+                  return (
+                    <div style={{ display: 'flex', gap: 24 }}>
+                      {/* Main Budget Content */}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Month Header */}
+                        <div style={{
+                          background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                          borderRadius: 8,
+                          padding: '14px 20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}>
+                          <h2 style={{ color: '#fff', fontSize: 20, fontWeight: 700, margin: 0 }}>
+                            {monthNames[calendarReportMonth]} {calendarReportYear}
+                          </h2>
+                          <span style={{ color: '#bbdefb', fontSize: 13 }}>
+                            {sortedTiles.length} budget items
+                          </span>
+                        </div>
+
+                        {/* Category Groups - Sort cancelled to bottom */}
+                        {Object.entries(groupedByCategory)
+                          .sort(([a], [b]) => {
+                            // Put 'cancelled' category at the end
+                            if (a === 'cancelled') return 1;
+                            if (b === 'cancelled') return -1;
+                            return a.localeCompare(b);
+                          })
+                          .map(([categoryId, categoryTiles]) => {
+                          const category = budgetCategories.find(c => c.id === categoryId);
+                          const categoryName = category?.name || 'Uncategorized';
+                          
+                          let categoryBudget = 0;
+                          let categoryActual = 0;
+                          
+                          // Helper to calculate payment day for a tile
+                          const getPaymentDay = (tile: Tile): number => {
+                            if (tile.signupDate) {
+                              const signup = new Date(tile.signupDate);
+                              return signup.getDate();
+                            }
+                            return 32; // Put tiles without date at end
+                          };
+                          
+                          // Sort categoryTiles by payment day
+                          const sortedCategoryTiles = [...categoryTiles].sort((a, b) => {
+                            return getPaymentDay(a) - getPaymentDay(b);
+                          });
+                          
+                          return (
+                            <div key={categoryId} style={{
+                              background: '#fff',
+                              borderRadius: 8,
+                              boxShadow: '0 2px 8px #0001',
+                              overflow: 'hidden',
+                            }}>
+                              {/* Category Header */}
+                              <div style={{
+                                background: '#f5f5f5',
+                                padding: '10px 16px',
+                                borderBottom: '1px solid #e0e0e0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}>
+                                <span style={{ fontSize: 16 }}>{category?.icon || '📁'}</span>
+                                <span style={{ fontWeight: 700, color: '#333', fontSize: 14 }}>{categoryName}</span>
+                                <span style={{ color: '#666', fontSize: 12 }}>({categoryTiles.length})</span>
+                              </div>
+
+                              {/* Table Header */}
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '2fr 0.7fr 1fr 1fr 1fr',
+                                gap: 8,
+                                padding: '10px 16px',
+                                background: '#fafafa',
+                                borderBottom: '1px solid #eee',
+                                fontWeight: 600,
+                                fontSize: 11,
+                                color: '#666',
+                                textTransform: 'uppercase',
+                              }}>
+                                <div>Name</div>
+                                <div style={{ textAlign: 'center' }}>Due Date</div>
+                                <div style={{ textAlign: 'right' }}>Budget</div>
+                                <div style={{ textAlign: 'right' }}>Actual</div>
+                                <div style={{ textAlign: 'right' }}>Diff</div>
+                              </div>
+
+                              {/* Table Rows */}
+                              {sortedCategoryTiles.map((tile, tileIndex) => {
+                                const amount = tile.budgetAmount || tile.paymentAmount || 0;
+                                const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+                                const isCancelled = tile.isCancelled || tile.budgetCategory === 'cancelled';
+                                
+                                // Calculate budget for this specific month
+                                let monthlyBudget = 0;
+                                let paymentDateStr = '-';
+                                let isPaymentMonth = false;
+                                
+                                if (tile.signupDate) {
+                                  const signupDate = new Date(tile.signupDate);
+                                  const signupMonth = signupDate.getMonth(); // 0-11
+                                  const paymentDay = signupDate.getDate();
+                                  
+                                  // Create date for current report month
+                                  const paymentDate = new Date(calendarReportYear, calendarReportMonth, paymentDay);
+                                  // Handle months with fewer days (e.g., Feb 30 -> Feb 28)
+                                  if (paymentDate.getMonth() !== calendarReportMonth) {
+                                    paymentDate.setDate(0); // Go to last day of previous month
+                                  }
+                                  paymentDateStr = paymentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                  
+                                  if (freq === 'Annually') {
+                                    // Annual: only show full amount in the payment month
+                                    isPaymentMonth = signupMonth === calendarReportMonth;
+                                    monthlyBudget = isPaymentMonth ? amount : 0;
+                                  } else if (freq === 'Monthly') {
+                                    // Monthly: show amount every month
+                                    monthlyBudget = amount;
+                                    isPaymentMonth = true;
+                                  }
+                                } else {
+                                  // No signup date - fall back to old logic
+                                  monthlyBudget = freq === 'Monthly' ? amount : (freq === 'Annually' ? amount / 12 : 0);
+                                }
+                                
+                                // For cancelled subscriptions, show as negative (savings)
+                                if (isCancelled) {
+                                  monthlyBudget = -Math.abs(monthlyBudget);
+                                }
+                                
+                                const actual = tile.budgetHistory?.[monthKey]?.actual || 0;
+                                const difference = monthlyBudget - actual;
+                                
+                                categoryBudget += monthlyBudget;
+                                categoryActual += actual;
+                                grandTotalBudget += monthlyBudget;
+                                grandTotalActual += actual;
+                                
+                                return (
+                                  <div
+                                    key={tile.id}
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: '2fr 0.7fr 1fr 1fr 1fr',
+                                      gap: 8,
+                                      padding: '10px 16px',
+                                      borderBottom: tileIndex < sortedCategoryTiles.length - 1 ? '1px solid #f0f0f0' : 'none',
+                                      alignItems: 'center',
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {tile.logo && (
+                                        <img 
+                                          src={tile.logo} 
+                                          alt="" 
+                                          style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'contain' }}
+                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        />
+                                      )}
+                                      {tile.link ? (
+                                        <a 
+                                          href={tile.link} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          style={{ 
+                                            fontWeight: 500, 
+                                            color: '#1976d2', 
+                                            textDecoration: 'none',
+                                            cursor: 'pointer',
+                                          }}
+                                          onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                                          onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                                        >
+                                          {tile.name}
+                                        </a>
+                                      ) : (
+                                        <span style={{ fontWeight: 500, color: '#333' }}>{tile.name}</span>
+                                      )}
+                                      {/* Edit Card Button */}
+                                      <button
+                                        onClick={() => handleEditTile(tile.id)}
+                                        title="Edit card"
+                                        style={{
+                                          background: '#f5f5f5',
+                                          border: '1px solid #ccc',
+                                          padding: '2px 5px',
+                                          cursor: 'pointer',
+                                          fontSize: 11,
+                                          color: '#999',
+                                          borderRadius: 4,
+                                          transition: 'all 0.2s ease',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = '#e3f2fd';
+                                          e.currentTarget.style.borderColor = '#90caf9';
+                                          e.currentTarget.style.color = '#1976d2';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = '#f5f5f5';
+                                          e.currentTarget.style.borderColor = '#ccc';
+                                          e.currentTarget.style.color = '#999';
+                                        }}
+                                      >
+                                        ✎
+                                      </button>
+                                    </div>
+                                    <div style={{ textAlign: 'center', fontSize: 12, color: '#666' }}>
+                                      {paymentDateStr}
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center',
+                                        border: '1px solid #ddd',
+                                        borderRadius: 4,
+                                        background: '#fff',
+                                        overflow: 'hidden',
+                                      }}>
+                                        <span style={{ 
+                                          padding: '4px 3px 4px 6px', 
+                                          color: '#666',
+                                          fontSize: 12,
+                                          fontWeight: 500,
+                                          background: '#f5f5f5',
+                                        }}>$</span>
+                                        <input
+                                          type="text"
+                                          value={monthlyBudget > 0 ? monthlyBudget.toFixed(2) : ''}
+                                          onChange={(e) => {
+                                            const value = e.target.value.replace(/[^0-9.]/g, '');
+                                            const newBudget = parseFloat(value) || 0;
+                                            const newAmount = freq === 'Annually' ? newBudget * 12 : newBudget;
+                                            setTiles(prevTiles => prevTiles.map(t => {
+                                              if (t.id !== tile.id) return t;
+                                              return { ...t, budgetAmount: newAmount, paymentAmount: newAmount };
+                                            }));
+                                          }}
+                                          placeholder="0.00"
+                                          style={{
+                                            width: '60px',
+                                            padding: '4px 6px 4px 3px',
+                                            border: 'none',
+                                            fontSize: 12,
+                                            textAlign: 'right',
+                                            background: '#fff',
+                                            outline: 'none',
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                                      {/* Copy Budget to Actual button */}
+                                      <button
+                                        onClick={() => {
+                                          setTiles(prevTiles => prevTiles.map(t => {
+                                            if (t.id !== tile.id) return t;
+                                            return {
+                                              ...t,
+                                              budgetHistory: {
+                                                ...t.budgetHistory,
+                                                [monthKey]: {
+                                                  ...t.budgetHistory?.[monthKey],
+                                                  budget: monthlyBudget,
+                                                  actual: monthlyBudget,
+                                                }
+                                              }
+                                            };
+                                          }));
+                                        }}
+                                        title="Copy Budget to Actual"
+                                        style={{
+                                          background: '#e3f2fd',
+                                          border: '1px solid #90caf9',
+                                          borderRadius: 4,
+                                          padding: '4px 6px',
+                                          cursor: 'pointer',
+                                          fontSize: 11,
+                                          color: '#1976d2',
+                                          fontWeight: 600,
+                                          transition: 'all 0.2s ease',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = '#1976d2';
+                                          e.currentTarget.style.color = '#fff';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = '#e3f2fd';
+                                          e.currentTarget.style.color = '#1976d2';
+                                        }}
+                                      >
+                                        →
+                                      </button>
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center',
+                                        border: '1px solid #ddd',
+                                        borderRadius: 4,
+                                        background: '#fff',
+                                        overflow: 'hidden',
+                                      }}>
+                                        <span style={{ 
+                                          padding: '4px 3px 4px 6px', 
+                                          color: '#666',
+                                          fontSize: 12,
+                                          fontWeight: 500,
+                                          background: '#f5f5f5',
+                                        }}>$</span>
+                                        <input
+                                          type="text"
+                                          value={actual > 0 ? actual.toFixed(2) : ''}
+                                          onChange={(e) => {
+                                            const value = e.target.value.replace(/[^0-9.]/g, '');
+                                            const newActual = parseFloat(value) || 0;
+                                            setTiles(prevTiles => prevTiles.map(t => {
+                                              if (t.id !== tile.id) return t;
+                                              return {
+                                                ...t,
+                                                budgetHistory: {
+                                                  ...t.budgetHistory,
+                                                  [monthKey]: {
+                                                    ...t.budgetHistory?.[monthKey],
+                                                    budget: monthlyBudget,
+                                                    actual: newActual,
+                                                  }
+                                                }
+                                              };
+                                            }));
+                                          }}
+                                          placeholder="0.00"
+                                          style={{
+                                            width: '60px',
+                                            padding: '4px 6px 4px 3px',
+                                            border: 'none',
+                                            fontSize: 12,
+                                            textAlign: 'right',
+                                            background: '#fff',
+                                            outline: 'none',
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div style={{ 
+                                      textAlign: 'right',
+                                      fontWeight: 600,
+                                      fontSize: 12,
+                                      color: difference >= 0 ? '#4caf50' : '#e53935',
+                                    }}>
+                                      {monthlyBudget > 0 ? (
+                                        <>{difference >= 0 ? '+' : ''}{formatCurrency(difference)}</>
+                                      ) : '-'}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {/* Category Subtotal */}
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                                gap: 8,
+                                padding: '10px 16px',
+                                background: '#f9f9f9',
+                                fontWeight: 600,
+                                fontSize: 12,
+                              }}>
+                                <div style={{ color: '#666' }}>Subtotal</div>
+                                <div style={{ textAlign: 'right', color: '#1976d2' }}>
+                                  {formatCurrency(categoryBudget)}
+                                </div>
+                                <div style={{ textAlign: 'right', color: '#666' }}>
+                                  {formatCurrency(categoryActual)}
+                                </div>
+                                <div style={{ 
+                                  textAlign: 'right',
+                                  color: categoryBudget - categoryActual >= 0 ? '#4caf50' : '#e53935',
+                                }}>
+                                  {categoryBudget - categoryActual >= 0 ? '+' : ''}{formatCurrency(categoryBudget - categoryActual)}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Grand Total */}
+                        <div style={{
+                          background: 'linear-gradient(135deg, #1976d2 0%, #0d47a1 100%)',
+                          borderRadius: 8,
+                          padding: '16px 20px',
+                        }}>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                            gap: 16,
+                            alignItems: 'center',
+                          }}>
+                            <div style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>
+                              📊 Total
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ color: '#bbdefb', fontSize: 10, textTransform: 'uppercase' }}>Budget</div>
+                              <div style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>{formatCurrency(grandTotalBudget)}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ color: '#bbdefb', fontSize: 10, textTransform: 'uppercase' }}>Actual</div>
+                              <div style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>{formatCurrency(grandTotalActual)}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ color: '#bbdefb', fontSize: 10, textTransform: 'uppercase' }}>Diff</div>
+                              <div style={{ 
+                                fontSize: 16, 
+                                fontWeight: 700,
+                                color: grandTotalBudget - grandTotalActual >= 0 ? '#a5d6a7' : '#ef9a9a',
+                              }}>
+                                {grandTotalBudget - grandTotalActual >= 0 ? '+' : ''}{formatCurrency(grandTotalBudget - grandTotalActual)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Sidebar - Year Overview */}
+                      <div style={{ width: 280, flexShrink: 0 }}>
+                        <div style={{
+                          background: '#fff',
+                          borderRadius: 8,
+                          boxShadow: '0 2px 8px #0001',
+                          padding: '16px',
+                        }}>
+                          <h3 style={{ color: '#333', fontSize: 14, fontWeight: 700, marginBottom: 16, margin: '0 0 16px 0' }}>
+                            📈 {calendarReportYear} Overview
+                          </h3>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => {
+                              const mKey = `${calendarReportYear}-${String(idx + 1).padStart(2, '0')}`;
+                              let mBudget = 0;
+                              let mActual = 0;
+                              tiles.forEach(t => {
+                                const amt = t.budgetAmount || t.paymentAmount || 0;
+                                const fr = t.budgetPeriod || t.paymentFrequency || '';
+                                const mb = fr === 'Monthly' ? amt : (fr === 'Annually' ? amt / 12 : 0);
+                                mBudget += mb;
+                                mActual += t.budgetHistory?.[mKey]?.actual || 0;
+                              });
+                              const isCurrentMonth = calendarReportMonth === idx;
+                              const diff = mBudget - mActual;
+                              const percentage = mBudget > 0 ? Math.min((mActual / mBudget) * 100, 100) : 0;
+                              
+                              return (
+                                <div 
+                                  key={month}
+                                  onClick={() => setCalendarReportMonth(idx)}
+                                  style={{ 
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '6px 8px',
+                                    borderRadius: 4,
+                                    background: isCurrentMonth ? '#e3f2fd' : 'transparent',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                >
+                                  <span style={{ 
+                                    fontSize: 11, 
+                                    color: isCurrentMonth ? '#1976d2' : '#999',
+                                    fontWeight: isCurrentMonth ? 700 : 500,
+                                    width: 28,
+                                  }}>
+                                    {month}
+                                  </span>
+                                  <div style={{ 
+                                    flex: 1, 
+                                    height: 8, 
+                                    background: '#f0f0f0',
+                                    borderRadius: 4,
+                                    overflow: 'hidden',
+                                  }}>
+                                    <div style={{
+                                      height: '100%',
+                                      width: `${percentage}%`,
+                                      background: diff >= 0 ? '#4caf50' : '#e53935',
+                                      borderRadius: 4,
+                                      transition: 'width 0.3s ease',
+                                    }} />
+                                  </div>
+                                  <span style={{ 
+                                    fontSize: 10, 
+                                    fontWeight: 600,
+                                    color: diff >= 0 ? '#4caf50' : '#e53935',
+                                    width: 50,
+                                    textAlign: 'right',
+                                  }}>
+                                    {mActual > 0 ? formatCurrency(diff) : '-'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         )}
         {mainMenu === 'home' && activeTab !== '' && activeTab !== 'APP Report' && (
@@ -6855,6 +8178,692 @@ function App() {
           </div>
         )}
 
+        {/* CALENDAR YEAR BUDGET REPORT */}
+        {mainMenu === 'reports' && activeReport === 'calendar' && (
+          <div style={{ padding: '32px 24px' }}>
+            {/* Header with Year Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <h1 style={{ color: '#1976d2', fontSize: 28, fontWeight: 700, margin: 0 }}>
+                  📅 Calendar Year Budget Report
+                </h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => setCalendarReportYear(y => y - 1)}
+                    style={{
+                      background: '#e3f2fd',
+                      color: '#1976d2',
+                      border: 'none',
+                      borderRadius: 4,
+                      padding: '6px 12px',
+                      fontSize: 16,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ◀
+                  </button>
+                  <span style={{ 
+                    fontSize: 20, 
+                    fontWeight: 700, 
+                    color: '#1976d2',
+                    minWidth: 60,
+                    textAlign: 'center',
+                  }}>
+                    {calendarReportYear}
+                  </span>
+                  <button
+                    onClick={() => setCalendarReportYear(y => y + 1)}
+                    style={{
+                      background: '#e3f2fd',
+                      color: '#1976d2',
+                      border: 'none',
+                      borderRadius: 4,
+                      padding: '6px 12px',
+                      fontSize: 16,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ▶
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  onClick={() => {
+                    // Export current month to Excel
+                    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                    const monthKey = `${calendarReportYear}-${String(calendarReportMonth + 1).padStart(2, '0')}`;
+                    const excelData: string[][] = [
+                      [`Calendar Year Budget Report - ${monthNames[calendarReportMonth]} ${calendarReportYear}`],
+                      [],
+                      ['Name', 'Category', 'Budget (Monthly)', 'Actual', 'Difference', 'Status'],
+                    ];
+                    
+                    // Get tiles with budget
+                    const budgetTiles = tiles.filter(t => t.budgetAmount || t.paymentAmount);
+                    const sortedTiles = [...budgetTiles].sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    let totalBudget = 0;
+                    let totalActual = 0;
+                    
+                    sortedTiles.forEach(tile => {
+                      const amount = tile.budgetAmount || tile.paymentAmount || 0;
+                      const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+                      const monthlyBudget = freq === 'Monthly' ? amount : (freq === 'Annually' ? amount / 12 : 0);
+                      const actual = tile.budgetHistory?.[monthKey]?.actual || 0;
+                      const difference = monthlyBudget - actual;
+                      const categoryName = budgetCategories.find(c => c.id === tile.budgetCategory)?.name || '-';
+                      
+                      totalBudget += monthlyBudget;
+                      totalActual += actual;
+                      
+                      excelData.push([
+                        tile.name,
+                        categoryName,
+                        monthlyBudget > 0 ? `$${monthlyBudget.toFixed(2)}` : '-',
+                        actual > 0 ? `$${actual.toFixed(2)}` : '-',
+                        monthlyBudget > 0 ? `$${difference.toFixed(2)}` : '-',
+                        difference >= 0 ? 'Under Budget' : 'Over Budget',
+                      ]);
+                    });
+                    
+                    excelData.push([]);
+                    excelData.push(['', 'TOTAL', `$${totalBudget.toFixed(2)}`, `$${totalActual.toFixed(2)}`, `$${(totalBudget - totalActual).toFixed(2)}`, '']);
+                    
+                    exportToExcel(excelData, `budget-${calendarReportYear}-${String(calendarReportMonth + 1).padStart(2, '0')}.xls`);
+                  }}
+                  title="Export Current Month to Excel"
+                  style={{
+                    background: '#e8f5e9',
+                    color: '#2e7d32',
+                    border: '2px solid #4caf50',
+                    borderRadius: 6,
+                    padding: '10px 16px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#4caf50';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#e8f5e9';
+                    e.currentTarget.style.color = '#2e7d32';
+                  }}
+                >
+                  📊 Export Month
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  title="Print Report"
+                  style={{
+                    background: '#e3f2fd',
+                    color: '#1976d2',
+                    border: '2px solid #1976d2',
+                    borderRadius: 6,
+                    padding: '10px 16px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#1976d2';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#e3f2fd';
+                    e.currentTarget.style.color = '#1976d2';
+                  }}
+                >
+                  🖨️ Print
+                </button>
+              </div>
+            </div>
+
+            {/* Month Tabs */}
+            <div style={{ 
+              display: 'flex', 
+              gap: 4, 
+              marginBottom: 24,
+              borderBottom: '2px solid #e0e0e0',
+              paddingBottom: 0,
+            }}>
+              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
+                const isActive = calendarReportMonth === index;
+                const monthKey = `${calendarReportYear}-${String(index + 1).padStart(2, '0')}`;
+                const hasData = tiles.some(t => (t.budgetHistory?.[monthKey]?.actual || 0) > 0);
+                
+                return (
+                  <button
+                    key={month}
+                    onClick={() => setCalendarReportMonth(index)}
+                    style={{
+                      padding: '12px 16px',
+                      border: 'none',
+                      background: isActive ? '#1976d2' : 'transparent',
+                      color: isActive ? '#fff' : '#666',
+                      fontWeight: isActive ? 700 : 500,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      borderRadius: '8px 8px 0 0',
+                      position: 'relative',
+                      transition: 'all 0.2s ease',
+                      minWidth: 60,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = '#e3f2fd';
+                        e.currentTarget.style.color = '#1976d2';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#666';
+                      }
+                    }}
+                  >
+                    {month}
+                    {hasData && (
+                      <span style={{
+                        position: 'absolute',
+                        top: 4,
+                        right: 4,
+                        width: 6,
+                        height: 6,
+                        background: isActive ? '#90caf9' : '#4caf50',
+                        borderRadius: '50%',
+                      }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Budget Table */}
+            {(() => {
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthKey = `${calendarReportYear}-${String(calendarReportMonth + 1).padStart(2, '0')}`;
+              
+              // Get all tiles with budget info, grouped by category
+              const budgetTiles = tiles.filter(t => t.budgetAmount || t.paymentAmount || t.budgetType);
+              const sortedTiles = [...budgetTiles].sort((a, b) => {
+                // Sort by category first, then by name
+                const catA = a.budgetCategory || 'zzz';
+                const catB = b.budgetCategory || 'zzz';
+                if (catA !== catB) return catA.localeCompare(catB);
+                return a.name.localeCompare(b.name);
+              });
+              
+              // Group by category
+              const groupedByCategory: { [key: string]: Tile[] } = {};
+              sortedTiles.forEach(tile => {
+                const catId = tile.budgetCategory || 'uncategorized';
+                if (!groupedByCategory[catId]) {
+                  groupedByCategory[catId] = [];
+                }
+                groupedByCategory[catId].push(tile);
+              });
+              
+              let grandTotalBudget = 0;
+              let grandTotalActual = 0;
+              
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  {/* Month Header */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                    borderRadius: 8,
+                    padding: '16px 24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 700, margin: 0 }}>
+                      {monthNames[calendarReportMonth]} {calendarReportYear}
+                    </h2>
+                    <span style={{ color: '#bbdefb', fontSize: 14 }}>
+                      {sortedTiles.length} budget items
+                    </span>
+                  </div>
+
+                  {/* Category Groups - Sort cancelled to bottom */}
+                  {Object.entries(groupedByCategory)
+                    .sort(([a], [b]) => {
+                      // Put 'cancelled' category at the end
+                      if (a === 'cancelled') return 1;
+                      if (b === 'cancelled') return -1;
+                      return a.localeCompare(b);
+                    })
+                    .map(([categoryId, categoryTiles]) => {
+                    const category = budgetCategories.find(c => c.id === categoryId);
+                    const categoryName = category?.name || 'Uncategorized';
+                    
+                    let categoryBudget = 0;
+                    let categoryActual = 0;
+                    
+                    return (
+                      <div key={categoryId} style={{
+                        background: '#fff',
+                        borderRadius: 8,
+                        boxShadow: '0 2px 8px #0001',
+                        overflow: 'hidden',
+                      }}>
+                        {/* Category Header */}
+                        <div style={{
+                          background: '#f5f5f5',
+                          padding: '12px 20px',
+                          borderBottom: '1px solid #e0e0e0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}>
+                          <span style={{ fontSize: 18 }}>{category?.icon || '📁'}</span>
+                          <span style={{ fontWeight: 700, color: '#333', fontSize: 16 }}>{categoryName}</span>
+                          <span style={{ color: '#666', fontSize: 13 }}>({categoryTiles.length} items)</span>
+                        </div>
+
+                        {/* Table Header */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 80px',
+                          gap: 8,
+                          padding: '12px 20px',
+                          background: '#fafafa',
+                          borderBottom: '1px solid #eee',
+                          fontWeight: 600,
+                          fontSize: 12,
+                          color: '#666',
+                          textTransform: 'uppercase',
+                        }}>
+                          <div>Name</div>
+                          <div>Type / Frequency</div>
+                          <div style={{ textAlign: 'right' }}>Budget</div>
+                          <div style={{ textAlign: 'right' }}>Actual</div>
+                          <div style={{ textAlign: 'right' }}>Difference</div>
+                          <div style={{ textAlign: 'center' }}>Edit</div>
+                        </div>
+
+                        {/* Table Rows */}
+                        {categoryTiles.map((tile, tileIndex) => {
+                          const amount = tile.budgetAmount || tile.paymentAmount || 0;
+                          const freq = tile.budgetPeriod || tile.paymentFrequency || '';
+                          const monthlyBudget = freq === 'Monthly' ? amount : (freq === 'Annually' ? amount / 12 : 0);
+                          const actual = tile.budgetHistory?.[monthKey]?.actual || 0;
+                          const difference = monthlyBudget - actual;
+                          
+                          categoryBudget += monthlyBudget;
+                          categoryActual += actual;
+                          grandTotalBudget += monthlyBudget;
+                          grandTotalActual += actual;
+                          
+                          return (
+                            <div
+                              key={tile.id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 80px',
+                                gap: 8,
+                                padding: '12px 20px',
+                                borderBottom: tileIndex < categoryTiles.length - 1 ? '1px solid #f0f0f0' : 'none',
+                                alignItems: 'center',
+                                fontSize: 14,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                {tile.logo && (
+                                  <img 
+                                    src={tile.logo} 
+                                    alt="" 
+                                    style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'contain' }}
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                  />
+                                )}
+                                <span style={{ fontWeight: 500, color: '#333' }}>{tile.name}</span>
+                              </div>
+                              <div style={{ color: '#666', fontSize: 13 }}>
+                                {tile.budgetType || '-'} {freq && `• ${freq}`}
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center',
+                                  border: '1px solid #ddd',
+                                  borderRadius: 4,
+                                  background: '#fff',
+                                  overflow: 'hidden',
+                                }}>
+                                  <span style={{ 
+                                    padding: '6px 4px 6px 8px', 
+                                    color: '#666',
+                                    fontSize: 13,
+                                    fontWeight: 500,
+                                    background: '#f5f5f5',
+                                  }}>$</span>
+                                  <input
+                                    type="text"
+                                    value={monthlyBudget > 0 ? monthlyBudget.toFixed(2) : ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value.replace(/[^0-9.]/g, '');
+                                      const newBudget = parseFloat(value) || 0;
+                                      // Update the tile's budgetAmount based on frequency
+                                      const newAmount = freq === 'Annually' ? newBudget * 12 : newBudget;
+                                      setTiles(prevTiles => prevTiles.map(t => {
+                                        if (t.id !== tile.id) return t;
+                                        return {
+                                          ...t,
+                                          budgetAmount: newAmount,
+                                          // Also update paymentAmount for backward compatibility
+                                          paymentAmount: newAmount,
+                                        };
+                                      }));
+                                    }}
+                                    placeholder="0.00"
+                                    style={{
+                                      width: '70px',
+                                      padding: '6px 8px 6px 4px',
+                                      border: 'none',
+                                      fontSize: 13,
+                                      textAlign: 'right',
+                                      background: '#fff',
+                                      outline: 'none',
+                                    }}
+                                    onFocus={(e) => {
+                                      const container = e.currentTarget.parentElement;
+                                      if (container) {
+                                        container.style.borderColor = '#1976d2';
+                                        container.style.boxShadow = '0 0 0 2px rgba(25, 118, 210, 0.2)';
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      const container = e.currentTarget.parentElement;
+                                      if (container) {
+                                        container.style.borderColor = '#ddd';
+                                        container.style.boxShadow = 'none';
+                                      }
+                                      // Format to 2 decimals on blur
+                                      const value = parseFloat(e.target.value) || 0;
+                                      if (value > 0) {
+                                        e.target.value = value.toFixed(2);
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center',
+                                  border: '1px solid #ddd',
+                                  borderRadius: 4,
+                                  background: '#fff',
+                                  overflow: 'hidden',
+                                }}>
+                                  <span style={{ 
+                                    padding: '6px 4px 6px 8px', 
+                                    color: '#666',
+                                    fontSize: 13,
+                                    fontWeight: 500,
+                                    background: '#f5f5f5',
+                                  }}>$</span>
+                                  <input
+                                    type="text"
+                                    value={actual > 0 ? actual.toFixed(2) : ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value.replace(/[^0-9.]/g, '');
+                                      const newActual = parseFloat(value) || 0;
+                                      setTiles(prevTiles => prevTiles.map(t => {
+                                        if (t.id !== tile.id) return t;
+                                        return {
+                                          ...t,
+                                          budgetHistory: {
+                                            ...t.budgetHistory,
+                                            [monthKey]: {
+                                              ...t.budgetHistory?.[monthKey],
+                                              budget: monthlyBudget,
+                                              actual: newActual,
+                                            }
+                                          }
+                                        };
+                                      }));
+                                    }}
+                                    placeholder="0.00"
+                                    style={{
+                                      width: '70px',
+                                      padding: '6px 8px 6px 4px',
+                                      border: 'none',
+                                      fontSize: 13,
+                                      textAlign: 'right',
+                                      background: '#fff',
+                                      outline: 'none',
+                                    }}
+                                    onFocus={(e) => {
+                                      const container = e.currentTarget.parentElement;
+                                      if (container) {
+                                        container.style.borderColor = '#4caf50';
+                                        container.style.boxShadow = '0 0 0 2px rgba(76, 175, 80, 0.2)';
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      const container = e.currentTarget.parentElement;
+                                      if (container) {
+                                        container.style.borderColor = '#ddd';
+                                        container.style.boxShadow = 'none';
+                                      }
+                                      // Format to 2 decimals on blur
+                                      const value = parseFloat(e.target.value) || 0;
+                                      if (value > 0) {
+                                        e.target.value = value.toFixed(2);
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div style={{ 
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                color: difference >= 0 ? '#4caf50' : '#e53935',
+                              }}>
+                                {monthlyBudget > 0 ? (
+                                  <>{difference >= 0 ? '+' : ''}{formatCurrency(difference)}</>
+                                ) : '-'}
+                              </div>
+                              <div style={{ textAlign: 'center' }}>
+                                <button
+                                  onClick={() => handleEditTile(tile.id)}
+                                  style={{
+                                    background: '#e3f2fd',
+                                    color: '#1976d2',
+                                    border: 'none',
+                                    borderRadius: 4,
+                                    padding: '4px 8px',
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#1976d2';
+                                    e.currentTarget.style.color = '#fff';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#e3f2fd';
+                                    e.currentTarget.style.color = '#1976d2';
+                                  }}
+                                >
+                                  ✏️ Edit
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Category Subtotal */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 80px',
+                          gap: 8,
+                          padding: '12px 20px',
+                          background: '#f9f9f9',
+                          fontWeight: 600,
+                          fontSize: 13,
+                        }}>
+                          <div></div>
+                          <div style={{ color: '#666' }}>Subtotal:</div>
+                          <div style={{ textAlign: 'right', color: '#1976d2' }}>
+                            {formatCurrency(categoryBudget)}
+                          </div>
+                          <div style={{ textAlign: 'right', color: '#666' }}>
+                            {formatCurrency(categoryActual)}
+                          </div>
+                          <div style={{ 
+                            textAlign: 'right',
+                            color: categoryBudget - categoryActual >= 0 ? '#4caf50' : '#e53935',
+                          }}>
+                            {categoryBudget - categoryActual >= 0 ? '+' : ''}{formatCurrency(categoryBudget - categoryActual)}
+                          </div>
+                          <div></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Grand Total */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1976d2 0%, #0d47a1 100%)',
+                    borderRadius: 8,
+                    padding: '20px 24px',
+                  }}>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                      gap: 16,
+                      alignItems: 'center',
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: 18, color: '#fff' }}>
+                        📊 Grand Total - {monthNames[calendarReportMonth]} {calendarReportYear}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#bbdefb', fontSize: 11, textTransform: 'uppercase', marginBottom: 4 }}>Budget</div>
+                        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>{formatCurrency(grandTotalBudget)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#bbdefb', fontSize: 11, textTransform: 'uppercase', marginBottom: 4 }}>Actual</div>
+                        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>{formatCurrency(grandTotalActual)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#bbdefb', fontSize: 11, textTransform: 'uppercase', marginBottom: 4 }}>Difference</div>
+                        <div style={{ 
+                          fontSize: 18, 
+                          fontWeight: 700,
+                          color: grandTotalBudget - grandTotalActual >= 0 ? '#a5d6a7' : '#ef9a9a',
+                        }}>
+                          {grandTotalBudget - grandTotalActual >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(grandTotalBudget - grandTotalActual))}
+                          <span style={{ fontSize: 12, marginLeft: 8 }}>
+                            {grandTotalBudget - grandTotalActual >= 0 ? 'Under' : 'Over'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Year Summary at Bottom */}
+                  <div style={{
+                    background: '#fff',
+                    borderRadius: 8,
+                    boxShadow: '0 2px 8px #0001',
+                    padding: '20px 24px',
+                  }}>
+                    <h3 style={{ color: '#333', fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
+                      📈 {calendarReportYear} Year Overview
+                    </h3>
+                    <div style={{ display: 'flex', gap: 24 }}>
+                      {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => {
+                        const mKey = `${calendarReportYear}-${String(idx + 1).padStart(2, '0')}`;
+                        let mBudget = 0;
+                        let mActual = 0;
+                        tiles.forEach(t => {
+                          const amt = t.budgetAmount || t.paymentAmount || 0;
+                          const fr = t.budgetPeriod || t.paymentFrequency || '';
+                          const mb = fr === 'Monthly' ? amt : (fr === 'Annually' ? amt / 12 : 0);
+                          mBudget += mb;
+                          mActual += t.budgetHistory?.[mKey]?.actual || 0;
+                        });
+                        const isCurrentMonth = calendarReportMonth === idx;
+                        const diff = mBudget - mActual;
+                        
+                        return (
+                          <div 
+                            key={month}
+                            onClick={() => setCalendarReportMonth(idx)}
+                            style={{ 
+                              flex: 1, 
+                              textAlign: 'center',
+                              padding: '8px 4px',
+                              borderRadius: 6,
+                              background: isCurrentMonth ? '#e3f2fd' : 'transparent',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                            }}
+                          >
+                            <div style={{ 
+                              fontSize: 11, 
+                              color: isCurrentMonth ? '#1976d2' : '#999',
+                              fontWeight: isCurrentMonth ? 700 : 500,
+                              marginBottom: 4,
+                            }}>
+                              {month}
+                            </div>
+                            <div style={{ 
+                              width: '100%', 
+                              height: 40, 
+                              background: '#f5f5f5',
+                              borderRadius: 4,
+                              position: 'relative',
+                              overflow: 'hidden',
+                            }}>
+                              {mBudget > 0 && (
+                                <div style={{
+                                  position: 'absolute',
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  height: `${Math.min((mActual / mBudget) * 100, 100)}%`,
+                                  background: diff >= 0 ? '#4caf50' : '#e53935',
+                                  opacity: 0.8,
+                                  transition: 'height 0.3s ease',
+                                }} />
+                              )}
+                            </div>
+                            <div style={{ 
+                              fontSize: 10, 
+                              color: diff >= 0 ? '#4caf50' : '#e53935',
+                              fontWeight: 600,
+                              marginTop: 4,
+                            }}>
+                              {mActual > 0 ? (diff >= 0 ? `+${Math.round(diff)}` : Math.round(diff)) : '-'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* SETTINGS PAGE */}
         {mainMenu === 'settings' && (
           <div style={{ padding: '32px 24px', maxWidth: 1200, margin: '0 auto' }}>
@@ -7262,6 +9271,166 @@ function App() {
               >
                 Cancel
               </button>
+            </div>
+          </Modal>
+        )}
+
+        {/* Cancel Subscription Modal */}
+        {showCancellationModal && cancellationTileId && (
+          <Modal onClose={() => { setShowCancellationModal(false); setCancellationTileId(null); }}>
+            <div style={{ padding: '8px 0' }}>
+              {(() => {
+                const tile = tiles.find(t => t.id === cancellationTileId);
+                if (!tile) return null;
+                
+                const amount = tile.budgetAmount || tile.paymentAmount || 0;
+                const freq = tile.budgetPeriod || tile.paymentFrequency || 'Monthly';
+                const monthlySavings = freq === 'Monthly' ? amount : (freq === 'Annually' ? amount / 12 : 0);
+                
+                return (
+                  <>
+                    <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                      <span style={{ fontSize: 48 }}>🚫</span>
+                      <h2 style={{ color: '#e53935', margin: '12px 0 8px 0' }}>Cancel Subscription</h2>
+                      <p style={{ color: '#666', fontSize: 14 }}>
+                        You are about to cancel <strong>{tile.name}</strong>
+                      </p>
+                    </div>
+                    
+                    {/* Important Disclaimer */}
+                    <div style={{ 
+                      background: '#ffebee', 
+                      border: '2px solid #ef5350',
+                      borderRadius: 8, 
+                      padding: 14, 
+                      marginBottom: 20,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                        <span style={{ fontSize: 20, flexShrink: 0 }}>⚠️</span>
+                        <div style={{ fontSize: 12, color: '#c62828', lineHeight: 1.5 }}>
+                          <strong>Important:</strong> This cancellation feature does NOT cancel your subscription with <strong>{tile.name}</strong>. 
+                          It only keeps track of your savings and cancellation date in this app. 
+                          <br /><br />
+                          <strong style={{ color: '#b71c1c' }}>You MUST go to the company's website and complete the cancellation process manually with them.</strong>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div style={{ 
+                      background: '#fff3e0', 
+                      border: '1px solid #ff9800',
+                      borderRadius: 8, 
+                      padding: 16, 
+                      marginBottom: 20,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {tile.logo && (
+                          <img 
+                            src={tile.logo} 
+                            alt={tile.name} 
+                            style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#333' }}>{tile.name}</div>
+                          <div style={{ fontSize: 13, color: '#666' }}>
+                            {formatCurrency(amount)} / {freq}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: 8, color: '#333' }}>
+                        📅 Cancellation Date
+                      </label>
+                      <input
+                        type="date"
+                        value={cancellationDate}
+                        onChange={(e) => setCancellationDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '2px solid #e0e0e0',
+                          borderRadius: 8,
+                          fontSize: 16,
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    
+                    <div style={{ 
+                      background: '#e8f5e9', 
+                      border: '1px solid #4caf50',
+                      borderRadius: 8, 
+                      padding: 16, 
+                      marginBottom: 24,
+                      textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: 13, color: '#2e7d32', marginBottom: 4 }}>
+                        💰 Estimated Monthly Savings
+                      </div>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: '#2e7d32' }}>
+                        {formatCurrency(monthlySavings)}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+                        ≈ {formatCurrency(monthlySavings * 12)} per year
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <button
+                        onClick={() => { setShowCancellationModal(false); setCancellationTileId(null); }}
+                        style={{
+                          flex: 1,
+                          background: '#f5f5f5',
+                          color: '#666',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '14px 20px',
+                          fontSize: 15,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Keep Subscription
+                      </button>
+                      <button
+                        onClick={confirmCancellation}
+                        style={{
+                          flex: 1,
+                          background: '#e53935',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '14px 20px',
+                          fontSize: 15,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        🚫 Cancel Subscription
+                      </button>
+                    </div>
+                    
+                    <p style={{ 
+                      fontSize: 11, 
+                      color: '#999', 
+                      textAlign: 'center', 
+                      marginTop: 16,
+                      marginBottom: 0,
+                    }}>
+                      The card will be moved to "Cancelled Subscriptions" category.
+                      <br />You can restore it anytime.
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           </Modal>
         )}

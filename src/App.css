@@ -380,3 +380,23 @@ form button[type="button"]:hover {
   transform: scale(1.2) !important;
   background: #1565c0 !important;
 }
+
+/* Home card wrapper - show cancel button on hover */
+.home-card-wrapper:hover .home-card-cancel-btn {
+  opacity: 1 !important;
+}
+
+.home-card-cancel-btn:hover {
+  transform: scale(1.2) !important;
+  background: #c62828 !important;
+}
+
+/* Home card wrapper - show restore button on hover */
+.home-card-wrapper:hover .home-card-restore-btn {
+  opacity: 1 !important;
+}
+
+.home-card-restore-btn:hover {
+  transform: scale(1.2) !important;
+  background: #2e7d32 !important;
+}
