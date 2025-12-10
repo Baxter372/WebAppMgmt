@@ -8869,6 +8869,59 @@ function App() {
                   </div>
                 )}
               </label>
+              {/* Main Tab Assignment (Home Apps / Business Apps) */}
+              <div style={{ 
+                padding: 12, 
+                background: '#fff3e0', 
+                borderRadius: 8,
+                border: '2px solid #ff9800',
+                marginTop: 8,
+              }}>
+                <div style={{ fontWeight: 600, color: '#e65100', marginBottom: 8, fontSize: 14 }}>
+                  🏠 App Tab
+                </div>
+                <label style={{ display: 'block' }}>
+                  <select
+                    value={form.mainTabId || 'home'}
+                    onChange={e => {
+                      const newMainTabId = e.target.value;
+                      // When changing main tab, reset category since categories differ between Home and Business
+                      setForm(f => ({ 
+                        ...f, 
+                        mainTabId: newMainTabId,
+                        budgetCategory: null, // Reset - user must select new category
+                        budgetSubcategory: null,
+                        budgetType: null, // Reset budget type since Home and Business have different types
+                        category: '', // Legacy field
+                      }));
+                    }}
+                    style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc', fontWeight: 600 }}
+                  >
+                    {tabs.map(tab => (
+                      <option key={tab.id} value={tab.id}>
+                        {tab.id === 'home' ? '🏠' : '💼'} {tab.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                  Move this card between Home Apps and Business Apps
+                </div>
+                {editTileId !== null && form.mainTabId !== (tiles.find(t => t.id === editTileId)?.mainTabId || 'home') && (
+                  <div style={{ 
+                    marginTop: 8, 
+                    padding: 8, 
+                    background: '#fff8e1', 
+                    borderRadius: 4, 
+                    border: '1px solid #ffcc80',
+                    fontSize: 12,
+                    color: '#f57c00',
+                  }}>
+                    ⚠️ Changing tabs will require you to select a new category below
+                  </div>
+                )}
+              </div>
+              
               {/* Home Page Tab Assignment */}
               <div style={{ 
                 padding: 12, 
@@ -8897,58 +8950,67 @@ function App() {
                 </div>
               </div>
               
-              {/* Category Section - Uses Budget Categories */}
-              <div style={{ 
-                padding: 12, 
-                background: '#e3f2fd', 
-                borderRadius: 8,
-                border: '1px solid #90caf9',
-                marginTop: 8,
-              }}>
-                <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 8, fontSize: 14 }}>
-                  📂 Category (Required)
-                </div>
-                <label style={{ display: 'block' }}>
-                  <select
-                    value={form.budgetCategory || ''}
-                    onChange={e => {
-                      const categoryId = e.target.value || null;
-                      setForm(f => ({ 
-                        ...f, 
-                        budgetCategory: categoryId,
-                        budgetSubcategory: null, // Reset subcategory when category changes
-                        // Also update legacy category field for backward compatibility
-                        category: categoryId ? (currentTabBudgetCategories.find(c => c.id === categoryId)?.name || '') : '',
-                      }));
-                    }}
-                    style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc' }}
-                    required
-                  >
-                    <option value="">-- Select Category --</option>
-                    {[...currentTabBudgetCategories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.icon} {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {/* Category Section - Uses Budget Categories based on form's mainTabId */}
+              {(() => {
+                // Get categories for the form's selected main tab (not the current view)
+                const formMainTabId = form.mainTabId || 'home';
+                const formTab = tabs.find(t => t.id === formMainTabId);
+                const formTabCategories = formTab?.budgetCategories || currentTabBudgetCategories;
                 
-                {form.budgetCategory && (
-                  <label style={{ display: 'block', marginTop: 10 }}>
-                    <span style={{ fontSize: 13, color: '#555' }}>Subcategory (optional):</span>
-                    <select
-                      value={form.budgetSubcategory || ''}
-                      onChange={e => setForm(f => ({ ...f, budgetSubcategory: e.target.value || null }))}
-                      style={{ width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #ccc' }}
-                    >
-                      <option value="">-- None --</option>
-                      {(currentTabBudgetCategories.find(c => c.id === form.budgetCategory)?.subcategories || []).map(sub => (
-                        <option key={sub} value={sub}>{sub}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
+                return (
+                  <div style={{ 
+                    padding: 12, 
+                    background: '#e3f2fd', 
+                    borderRadius: 8,
+                    border: '1px solid #90caf9',
+                    marginTop: 8,
+                  }}>
+                    <div style={{ fontWeight: 600, color: '#1976d2', marginBottom: 8, fontSize: 14 }}>
+                      📂 Category (Required) - {formMainTabId === 'business' ? 'Business' : 'Home'} Categories
+                    </div>
+                    <label style={{ display: 'block' }}>
+                      <select
+                        value={form.budgetCategory || ''}
+                        onChange={e => {
+                          const categoryId = e.target.value || null;
+                          setForm(f => ({ 
+                            ...f, 
+                            budgetCategory: categoryId,
+                            budgetSubcategory: null, // Reset subcategory when category changes
+                            // Also update legacy category field for backward compatibility
+                            category: categoryId ? (formTabCategories.find(c => c.id === categoryId)?.name || '') : '',
+                          }));
+                        }}
+                        style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc' }}
+                        required
+                      >
+                        <option value="">-- Select Category --</option>
+                        {[...formTabCategories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.icon} {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    
+                    {form.budgetCategory && (
+                      <label style={{ display: 'block', marginTop: 10 }}>
+                        <span style={{ fontSize: 13, color: '#555' }}>Subcategory (optional):</span>
+                        <select
+                          value={form.budgetSubcategory || ''}
+                          onChange={e => setForm(f => ({ ...f, budgetSubcategory: e.target.value || null }))}
+                          style={{ width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #ccc' }}
+                        >
+                          <option value="">-- None --</option>
+                          {(formTabCategories.find(c => c.id === form.budgetCategory)?.subcategories || []).map(sub => (
+                            <option key={sub} value={sub}>{sub}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                );
+              })()}
               
               {/* Budget & Payment Section - Merged */}
               <div style={{ 
@@ -9003,7 +9065,7 @@ function App() {
                         style={{ width: '100%', padding: 8, marginTop: 4 }}
                       >
                         <option value="">-- Select Type --</option>
-                        {selectedMainTab === 'business' ? (
+                        {(form.mainTabId || 'home') === 'business' ? (
                           <>
                             <option value="Operating Expense">🏢 Operating Expense (Day-to-day costs)</option>
                             <option value="Capital Expense">🏗️ Capital Expense (Large purchases)</option>
