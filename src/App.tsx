@@ -2115,6 +2115,7 @@ function App() {
                   creditCardName: '',
                   accountLink: '',
                   notes: '',
+                  mainTabId: selectedMainTab, // Set to current tab when creating new card
                   // Set budget category for new card
                   isWebLinkOnly: false,
                   budgetType: null,
@@ -2836,6 +2837,8 @@ function App() {
       budgetSubcategory: tile.budgetSubcategory || null,
       // Home Page Tab assignment
       homePageTabId: tile.homePageTabId || null,
+      // Main Tab assignment (Home Apps, Business Apps)
+      mainTabId: tile.mainTabId || 'home',
     });
   };
   const handleDeleteTile = (tileId: number) => {
