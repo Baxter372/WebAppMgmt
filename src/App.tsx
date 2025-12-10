@@ -8922,34 +8922,6 @@ function App() {
                 )}
               </div>
               
-              {/* Home Page Tab Assignment */}
-              <div style={{ 
-                padding: 12, 
-                background: '#f3e5f5', 
-                borderRadius: 8,
-                border: '1px solid #ce93d8',
-                marginTop: 8,
-              }}>
-                <div style={{ fontWeight: 600, color: '#7b1fa2', marginBottom: 8, fontSize: 14 }}>
-                  🏷️ Home Page Tab (Optional)
-                </div>
-                <label style={{ display: 'block' }}>
-                  <select
-                    value={form.homePageTabId || ''}
-                    onChange={e => setForm(f => ({ ...f, homePageTabId: e.target.value || null }))}
-                    style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc' }}
-                  >
-                    <option value="">-- All Tabs (Default) --</option>
-                    {homePageTabs.filter(t => t.id !== 'all').map(tab => (
-                      <option key={tab.id} value={tab.id}>{tab.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
-                  Assign this card to a specific Home Page Tab for organization
-                </div>
-              </div>
-              
               {/* Category Section - Uses Budget Categories based on form's mainTabId */}
               {(() => {
                 // Get categories for the form's selected main tab (not the current view)
