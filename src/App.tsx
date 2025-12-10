@@ -6661,13 +6661,44 @@ function App() {
                     }
                     
                     return results.map(tile => {
-                      const category = budgetCategories.find(c => c.id === tile.budgetCategory);
+                      // Look for category in ALL tabs' budget categories, not just the global one
+                      let category: BudgetCategory | undefined;
+                      let tileMainTab: Tab | undefined;
+                      for (const tab of tabs) {
+                        const found = tab.budgetCategories?.find(c => c.id === tile.budgetCategory);
+                        if (found) {
+                          category = found;
+                          tileMainTab = tab;
+                          break;
+                        }
+                      }
+                      // Fallback to global budgetCategories if not found in tabs
+                      if (!category) {
+                        category = budgetCategories.find(c => c.id === tile.budgetCategory);
+                      }
+                      
+                      // Determine which main tab the tile belongs to
+                      const mainTabName = tile.mainTabId === 'business' ? 'Business Apps' : 'Home Apps';
+                      
                       return (
                         <div
                           key={tile.id}
                           onClick={() => {
+                            // Switch to the correct main tab (Home Apps / Business Apps)
+                            if (tile.mainTabId) {
+                              setSelectedMainTab(tile.mainTabId);
+                            }
+                            // Switch to the correct home page tab if specified
+                            if (tile.homePageTabId) {
+                              setSelectedHomePageTab(tile.homePageTabId);
+                            } else {
+                              setSelectedHomePageTab('all');
+                            }
+                            // Set the category filter
                             if (tile.budgetCategory) {
                               setActiveTab(tile.budgetCategory);
+                            } else {
+                              setActiveTab('');
                             }
                             setSearchQuery('');
                           }}
@@ -6689,6 +6720,9 @@ function App() {
                           <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
                             {category ? `${category.icon} ${category.name}` : 'Uncategorized'}
                             {tile.budgetSubcategory && ` • ${tile.budgetSubcategory}`}
+                            <span style={{ marginLeft: 8, padding: '2px 6px', background: tile.mainTabId === 'business' ? '#e3f2fd' : '#f3e5f5', borderRadius: 4, fontSize: 11 }}>
+                              {mainTabName}
+                            </span>
                           </div>
                         </div>
                       );
