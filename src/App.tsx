@@ -1782,7 +1782,8 @@ function App() {
 
     // Check if there are uncategorized cards that need a home (in current tab view)
     // First filter by main tab (Home Apps vs Business Apps)
-    const mainTabFiltered = tiles.filter(t => t.mainTabId === selectedMainTab);
+    // Treat null/undefined mainTabId as 'home' for backwards compatibility
+    const mainTabFiltered = tiles.filter(t => t.mainTabId === selectedMainTab || (!t.mainTabId && selectedMainTab === 'home'));
     const filteredByTab = selectedHomePageTab === 'all'
       ? mainTabFiltered
       : mainTabFiltered.filter(t => t.homePageTabId === selectedHomePageTab || !t.homePageTabId);
@@ -4883,8 +4884,9 @@ function App() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* Get categories that have at least one card */}
                 {(() => {
-                  // Filter tiles by main tab first (Home Apps / Business Apps) - strict filtering
-                  const mainTabTiles = tiles.filter(t => t.mainTabId === selectedMainTab);
+                  // Filter tiles by main tab first (Home Apps / Business Apps)
+                  // Treat null/undefined mainTabId as 'home' for backwards compatibility
+                  const mainTabTiles = tiles.filter(t => t.mainTabId === selectedMainTab || (!t.mainTabId && selectedMainTab === 'home'));
                   
                   // Filter tiles based on selected home page tab
                   let filteredByTab = selectedHomePageTab === 'all'
@@ -5361,7 +5363,8 @@ function App() {
               }}>
                 {(() => {
                   // Filter tiles by main tab (Home Apps vs Business Apps)
-                  const filteredTiles = tiles.filter(t => t.mainTabId === selectedMainTab);
+                  // Treat null/undefined mainTabId as 'home' for backwards compatibility
+                  const filteredTiles = tiles.filter(t => t.mainTabId === selectedMainTab || (!t.mainTabId && selectedMainTab === 'home'));
                   
                   // Get filtered upcoming payments
                   const filteredUpcomingPayments = getUpcomingPaymentsThisMonth(filteredTiles);
@@ -5379,7 +5382,8 @@ function App() {
                   );
                   
                   // Calculate annual savings from cancelled subscriptions (for current main tab)
-                  const cancelledTiles = tiles.filter(t => (t.isCancelled || t.budgetCategory === 'cancelled') && t.mainTabId === selectedMainTab);
+                  // Treat null/undefined mainTabId as 'home' for backwards compatibility with older tiles
+                  const cancelledTiles = tiles.filter(t => (t.isCancelled || t.budgetCategory === 'cancelled') && (t.mainTabId === selectedMainTab || (!t.mainTabId && selectedMainTab === 'home')));
                   const annualSavings = cancelledTiles.reduce((sum, t) => {
                     const amount = t.budgetAmount || t.paymentAmount || 0;
                     const freq = t.budgetPeriod || t.paymentFrequency || '';
