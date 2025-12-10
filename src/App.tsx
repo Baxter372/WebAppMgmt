@@ -8900,11 +8900,8 @@ function App() {
                     }}
                     style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc', fontWeight: 600 }}
                   >
-                    {tabs.map(tab => (
-                      <option key={tab.id} value={tab.id}>
-                        {tab.id === 'home' ? '🏠' : '💼'} {tab.name}
-                      </option>
-                    ))}
+                    <option value="home">🏠 Home Apps</option>
+                    <option value="business">💼 Business Apps</option>
                   </select>
                 </label>
                 <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
