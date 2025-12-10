@@ -8725,7 +8725,7 @@ function App() {
                   <option value="local">Local Application (reference only)</option>
                 </select>
               </label>
-              {form.appType === 'web' && (
+              {(form.appType === 'web' || !form.appType) && (
                 <label>
                   Web Link:<br />
                   <input
