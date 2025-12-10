@@ -45,7 +45,7 @@ type Tile = {
   appType?: 'web' | 'local' | 'protocol';
   localPath?: string;
   paidSubscription?: boolean;
-  paymentFrequency?: 'Monthly' | 'Annually' | null;
+  paymentFrequency?: 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Quarterly' | 'Annually' | null;
   annualType?: 'Subscriber' | 'Fiscal' | 'Calendar' | null;
   paymentAmount?: number | null;
   signupDate?: string | null;
@@ -58,9 +58,11 @@ type Tile = {
   notes?: string;
   // Budget fields
   isWebLinkOnly?: boolean;
-  budgetType?: 'Bill' | 'Subscription' | 'Expense' | 'Savings' | null;
+  // Home types: Bill, Subscription, Expense, Savings
+  // Business types: Operating Expense, Capital Expense, Subscription/SaaS, Payroll, Vendor Payment, Tax Payment, Loan/Debt Payment
+  budgetType?: 'Bill' | 'Subscription' | 'Expense' | 'Savings' | 'Operating Expense' | 'Capital Expense' | 'Subscription/SaaS' | 'Payroll' | 'Vendor Payment' | 'Tax Payment' | 'Loan/Debt Payment' | null;
   budgetAmount?: number | null;
-  budgetPeriod?: 'Monthly' | 'Annually' | null;
+  budgetPeriod?: 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Quarterly' | 'Annually' | null;
   budgetCategory?: string | null;  // Budget category ID
   budgetSubcategory?: string | null;  // Budget subcategory name
   budgetHistory?: {
@@ -73,14 +75,23 @@ type Tile = {
   };
   // Home Page Tab assignment
   homePageTabId?: string | null;  // Which home page tab this card belongs to
+  // Main Tab assignment (Home Apps, Business Apps, etc.)
+  mainTabId?: string | null;  // Which main tab this card belongs to
   // Cancellation tracking
   isCancelled?: boolean;
   cancellationDate?: string | null;
   previousBudgetCategory?: string | null;  // Store original category before cancellation
 };
 type HomePageTab = { id: string; name: string; };
-type Tab = { name: string; subcategories?: string[]; hasStockTicker?: boolean; homePageTabId?: string; };
 type BudgetCategory = { id: string; name: string; icon: string; subcategories: string[]; };
+type Tab = { 
+  id: string;
+  name: string; 
+  subcategories?: string[]; 
+  hasStockTicker?: boolean; 
+  homePageTabId?: string;
+  budgetCategories: BudgetCategory[];
+};
 
 // Default budget categories (sorted A-Z by name)
 const defaultBudgetCategories: BudgetCategory[] = [
@@ -119,7 +130,90 @@ type CreditCard = {
 type FinanceChild = { amount: number; date: string; };
 type FinanceTile = { id: number; name: string; description: string; children: FinanceChild[]; };
 
-const defaultTabs: Tab[] = [{ name: 'Banking' }, { name: 'AI' }];
+// Budget Types for Home and Business
+const homeBudgetTypes = ['Bill', 'Subscription', 'Expense', 'Savings'] as const;
+const businessBudgetTypes = ['Operating Expense', 'Capital Expense', 'Subscription/SaaS', 'Payroll', 'Vendor Payment', 'Tax Payment', 'Loan/Debt Payment'] as const;
+
+// Budget type colors
+const budgetTypeColors: Record<string, string> = {
+  // Home types
+  'Bill': '#4169E1',           // Royal Blue
+  'Subscription': '#87CEEB',   // Light Blue
+  'Expense': '#FF6B6B',        // Coral
+  'Savings': '#4CAF50',        // Green
+  // Business types
+  'Operating Expense': '#FF9800',  // Orange
+  'Capital Expense': '#9C27B0',    // Purple
+  'Subscription/SaaS': '#00BCD4',  // Cyan
+  'Payroll': '#E91E63',            // Pink
+  'Vendor Payment': '#795548',     // Brown
+  'Tax Payment': '#607D8B',        // Blue Grey
+  'Loan/Debt Payment': '#F44336',  // Red
+};
+
+// Budget type icons
+const budgetTypeIcons: Record<string, string> = {
+  // Home types
+  'Bill': '💡',
+  'Subscription': '🔄',
+  'Expense': '💳',
+  'Savings': '💰',
+  // Business types
+  'Operating Expense': '🏢',
+  'Capital Expense': '🏗️',
+  'Subscription/SaaS': '💻',
+  'Payroll': '👥',
+  'Vendor Payment': '📦',
+  'Tax Payment': '📋',
+  'Loan/Debt Payment': '🏦',
+};
+
+// Check if a budget type is a "paid" type (for Payments Due list)
+const isPaidBudgetType = (budgetType: string | null | undefined): boolean => {
+  const paidTypes = ['Bill', 'Subscription', 'Operating Expense', 'Capital Expense', 'Subscription/SaaS', 'Payroll', 'Vendor Payment', 'Tax Payment', 'Loan/Debt Payment'];
+  return budgetType ? paidTypes.includes(budgetType) : false;
+};
+
+// Default business budget categories (18 standard small business categories)
+const defaultBusinessBudgetCategories: BudgetCategory[] = [
+  // 💼 Personnel & Compensation
+  { id: 'biz-payroll', name: 'Salaries & Wages (Payroll)', icon: '💰', subcategories: ['Full-Time Employees', 'Part-Time Employees', 'Bonuses', 'Commissions', 'Contractors'] },
+  { id: 'biz-benefits', name: 'Employee Benefits', icon: '🏥', subcategories: ['Health Insurance', 'Retirement/401k', 'Life Insurance', 'PTO/Vacation', 'Other Perks'] },
+  { id: 'biz-payroll-tax', name: 'Payroll Taxes', icon: '📋', subcategories: ['Social Security', 'Medicare', 'Unemployment Tax', 'State Payroll Tax'] },
+  
+  // 🏢 Occupancy & Operations
+  { id: 'biz-rent', name: 'Rent or Mortgage Interest', icon: '🏢', subcategories: ['Office Rent', 'Warehouse Rent', 'Mortgage Interest', 'Home Office'] },
+  { id: 'biz-utilities', name: 'Utilities', icon: '💡', subcategories: ['Electricity', 'Gas', 'Water/Sewage', 'Trash Service'] },
+  { id: 'biz-internet', name: 'Internet & Phone', icon: '📱', subcategories: ['Business Internet', 'Landlines', 'Mobile Devices', 'VoIP Services'] },
+  { id: 'biz-supplies', name: 'Office Supplies', icon: '📎', subcategories: ['Paper/Printing', 'Pens/Stationery', 'Printer Ink/Toner', 'Cleaning Supplies', 'General Consumables'] },
+  
+  // 📢 Sales & Marketing
+  { id: 'biz-marketing', name: 'Marketing & Advertising', icon: '📢', subcategories: ['Online Ads (Google/Social)', 'Print Materials', 'PR/Public Relations', 'Email Marketing', 'SEO/Content'] },
+  { id: 'biz-travel', name: 'Business Travel & Meals', icon: '✈️', subcategories: ['Airfare', 'Lodging/Hotels', 'Client Meals', 'Ground Transportation', 'Per Diem'] },
+  
+  // 🛠️ Equipment & Technology
+  { id: 'biz-software', name: 'Software & Subscriptions', icon: '💻', subcategories: ['Accounting Software', 'CRM', 'Cloud Storage', 'Design Tools', 'Industry Apps'] },
+  { id: 'biz-equipment', name: 'Equipment & Furniture', icon: '🖥️', subcategories: ['Computers/Laptops', 'Printers/Scanners', 'Desks/Furniture', 'Machinery', 'Vehicles'] },
+  { id: 'biz-maintenance', name: 'Maintenance & Repairs', icon: '🔧', subcategories: ['Equipment Repairs', 'Vehicle Maintenance', 'Facility Repairs', 'IT Support'] },
+  { id: 'biz-depreciation', name: 'Depreciation', icon: '📉', subcategories: ['Vehicle Depreciation', 'Equipment Depreciation', 'Building Depreciation', 'Technology Depreciation'] },
+  
+  // ⚖️ Professional & Compliance
+  { id: 'biz-professional', name: 'Legal & Professional Fees', icon: '⚖️', subcategories: ['CPA/Accountant', 'Lawyer/Attorney', 'Consultants', 'Marketing Agency'] },
+  { id: 'biz-bank-fees', name: 'Bank & Merchant Fees', icon: '🏦', subcategories: ['Bank Service Charges', 'Credit Card Processing', 'Loan Interest', 'Wire Transfer Fees'] },
+  { id: 'biz-taxes', name: 'Taxes, Licenses & Permits', icon: '📜', subcategories: ['Business Property Tax', 'Business License', 'Operating Permits', 'State/Local Taxes'] },
+  { id: 'biz-insurance', name: 'Business Insurance', icon: '🛡️', subcategories: ['General Liability', 'Professional Liability (E&O)', 'Property Insurance', 'Workers Comp'] },
+  
+  // 📦 Manufacturing & Inventory
+  { id: 'biz-cogs', name: 'Cost of Goods Sold (COGS)', icon: '📦', subcategories: ['Raw Materials', 'Direct Labor', 'Freight/Shipping', 'Manufacturing Overhead'] },
+  
+  // System category
+  { id: 'biz-cancelled', name: '🚫 Cancelled Subscriptions', icon: '🚫', subcategories: ['Cancelled This Month', 'Cancelled This Year', 'Archived'] },
+];
+
+const defaultTabs: Tab[] = [
+  { id: 'home', name: 'Home Apps', budgetCategories: defaultBudgetCategories },
+  { id: 'business', name: 'Business Apps', budgetCategories: defaultBusinessBudgetCategories },
+];
 const initialTiles: Tile[] = [];
 
 // ...DROPPABLE TAB COMPONENT...
@@ -480,7 +574,7 @@ function isPaymentDueSoon(
 ): boolean {
   // Check if tile has payment info (either old system or new budget system)
   const paymentFreq = tile.paymentFrequency || tile.budgetPeriod;
-  const isPaidItem = tile.paidSubscription || tile.budgetType === 'Bill' || tile.budgetType === 'Subscription';
+  const isPaidItem = tile.paidSubscription || isPaidBudgetType(tile.budgetType);
   
   if (!isPaidItem || !tile.signupDate || !paymentFreq) {
     return false;
@@ -504,7 +598,7 @@ function isPaymentDueSoon(
 // Calculate next payment date based on signup date and frequency
 function calculateNextPaymentDate(
   signupDate: string | null | undefined,
-  paymentFrequency: 'Monthly' | 'Annually' | null | undefined,
+  paymentFrequency: 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Quarterly' | 'Annually' | null | undefined,
   annualType: 'Subscriber' | 'Fiscal' | 'Calendar' | null | undefined
 ): string | null {
   if (!signupDate || !paymentFrequency) return null;
@@ -512,6 +606,45 @@ function calculateNextPaymentDate(
   const signup = new Date(signupDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  
+  if (paymentFrequency === 'Weekly') {
+    // Calculate next weekly payment
+    let nextDate = new Date(signup);
+    while (nextDate <= today) {
+      nextDate.setDate(nextDate.getDate() + 7);
+    }
+    return nextDate.toISOString().split('T')[0];
+  }
+  
+  if (paymentFrequency === 'Bi-Weekly') {
+    // Calculate next bi-weekly payment (every 14 days)
+    let nextDate = new Date(signup);
+    while (nextDate <= today) {
+      nextDate.setDate(nextDate.getDate() + 14);
+    }
+    return nextDate.toISOString().split('T')[0];
+  }
+  
+  if (paymentFrequency === 'Semi-Monthly') {
+    // Semi-monthly: 1st and 15th of each month
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    // Try 1st and 15th of current month, then next month
+    const options = [
+      new Date(currentYear, currentMonth, 1),
+      new Date(currentYear, currentMonth, 15),
+      new Date(currentYear, currentMonth + 1, 1),
+      new Date(currentYear, currentMonth + 1, 15),
+    ];
+    
+    for (const date of options) {
+      if (date > today) {
+        return date.toISOString().split('T')[0];
+      }
+    }
+    return options[options.length - 1].toISOString().split('T')[0];
+  }
   
   if (paymentFrequency === 'Monthly') {
     // Calculate next monthly payment
@@ -522,6 +655,15 @@ function calculateNextPaymentDate(
       nextDate.setMonth(nextDate.getMonth() + 1);
     }
     
+    return nextDate.toISOString().split('T')[0];
+  }
+  
+  if (paymentFrequency === 'Quarterly') {
+    // Calculate next quarterly payment (every 3 months)
+    let nextDate = new Date(signup);
+    while (nextDate <= today) {
+      nextDate.setMonth(nextDate.getMonth() + 3);
+    }
     return nextDate.toISOString().split('T')[0];
   }
   
@@ -568,7 +710,7 @@ function getUpcomingPaymentsThisMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
     // Check if tile has payment info (either old system or new budget system)
     const hasPaymentAmount = tile.paymentAmount || tile.budgetAmount;
     const paymentFreq = tile.paymentFrequency || tile.budgetPeriod;
-    const isPaidItem = tile.paidSubscription || tile.budgetType === 'Bill' || tile.budgetType === 'Subscription';
+    const isPaidItem = tile.paidSubscription || isPaidBudgetType(tile.budgetType);
     
     if (isPaidItem && tile.signupDate && hasPaymentAmount && paymentFreq) {
       const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, paymentFreq, tile.annualType);
@@ -601,7 +743,7 @@ function getUpcomingPaymentsNextMonth(tiles: Tile[]): Array<{ tile: Tile; nextPa
     // Check if tile has payment info (either old system or new budget system)
     const hasPaymentAmount = tile.paymentAmount || tile.budgetAmount;
     const paymentFreq = tile.paymentFrequency || tile.budgetPeriod;
-    const isPaidItem = tile.paidSubscription || tile.budgetType === 'Bill' || tile.budgetType === 'Subscription';
+    const isPaidItem = tile.paidSubscription || isPaidBudgetType(tile.budgetType);
     
     if (isPaidItem && tile.signupDate && hasPaymentAmount && paymentFreq) {
       const nextPaymentDateStr = calculateNextPaymentDate(tile.signupDate, paymentFreq, tile.annualType);
@@ -659,7 +801,7 @@ function App() {
     localStorage.setItem('creditCards', JSON.stringify(creditCards));
   }, [creditCards]);
   
-  // --- Budget Categories state and handlers ---
+  // --- Budget Categories state (now stored per-tab, this is for backwards compatibility) ---
   const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>(() => {
     const saved = localStorage.getItem('budgetCategories');
     let categories = saved ? JSON.parse(saved) : defaultBudgetCategories;
@@ -674,15 +816,107 @@ function App() {
     localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
   }, [budgetCategories]);
   
+  // Migration effect: Copy existing budgetCategories into Home Apps tab if not done
+  const [hasMigratedCategories, setHasMigratedCategories] = useState(() => {
+    return localStorage.getItem('hasMigratedToTabCategories') === 'true';
+  });
+  
   // --- WebTabs state and handlers ---
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const saved = localStorage.getItem('tabs');
-    return saved ? JSON.parse(saved) : defaultTabs;
+    const hasRunBusinessMigration = localStorage.getItem('hasRunBusinessCategoriesMigration') === 'true';
+    
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Check if tabs have the new structure (with id and budgetCategories)
+      if (parsed.length > 0 && parsed[0].id && parsed[0].budgetCategories) {
+        // Force migration: Update Business Apps with the 19 standard business categories
+        // This migration runs ONCE and is tracked by localStorage flag
+        if (!hasRunBusinessMigration) {
+          console.log('FORCE migrating Business Apps to correct business categories...');
+          // Replace business tab categories with new default business categories
+          const migrated = parsed.map((tab: Tab) => {
+            if (tab.id === 'business') {
+              return { ...tab, budgetCategories: defaultBusinessBudgetCategories };
+            }
+            return tab;
+          });
+          // Save immediately to localStorage
+          localStorage.setItem('tabs', JSON.stringify(migrated));
+          localStorage.setItem('hasRunBusinessCategoriesMigration', 'true');
+          return migrated;
+        }
+        return parsed;
+      }
+      // Migration: Old tabs don't have budgetCategories - create new default tabs
+      // and migrate existing budgetCategories to "Home Apps"
+    }
+    // Return default tabs - existing budgetCategories will be migrated to Home Apps
+    localStorage.setItem('hasRunBusinessCategoriesMigration', 'true');
+    return defaultTabs;
   });
+  
+  // Selected main tab (Home Apps, Business Apps, etc.)
+  const [selectedMainTab, setSelectedMainTab] = useState<string>(() => {
+    const saved = localStorage.getItem('selectedMainTab');
+    return saved || 'home';
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('selectedMainTab', selectedMainTab);
+  }, [selectedMainTab]);
+  
+  // Get budget categories for the currently selected main tab
+  const currentTabBudgetCategories = React.useMemo(() => {
+    const tab = tabs.find(t => t.id === selectedMainTab);
+    const categories = tab?.budgetCategories || [];
+    
+    // For business tab, ensure we have the correct business categories
+    // Check if it has home categories instead of business categories
+    if (selectedMainTab === 'business') {
+      const hasCorrectBusinessCategories = categories.some(
+        (c: BudgetCategory) => c.id === 'biz-payroll' || c.id === 'biz-cogs'
+      );
+      if (!hasCorrectBusinessCategories) {
+        return defaultBusinessBudgetCategories;
+      }
+    }
+    
+    return categories;
+  }, [tabs, selectedMainTab]);
+  
+  // Migration effect: Copy existing budgetCategories into Home Apps tab
+  useEffect(() => {
+    if (!hasMigratedCategories && budgetCategories.length > 0) {
+      // Update Home Apps tab with user's existing budget categories
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === 'home') {
+          return { ...tab, budgetCategories: budgetCategories };
+        }
+        return tab;
+      }));
+      setHasMigratedCategories(true);
+      localStorage.setItem('hasMigratedToTabCategories', 'true');
+    }
+  }, [hasMigratedCategories, budgetCategories]);
+  
+  // Update tabs when currentTabBudgetCategories changes (for backwards compat with old setBudgetCategories calls)
+  useEffect(() => {
+    if (hasMigratedCategories) {
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === selectedMainTab) {
+          return { ...tab, budgetCategories: budgetCategories };
+        }
+        return tab;
+      }));
+    }
+  }, [budgetCategories, selectedMainTab, hasMigratedCategories]);
+  
   const [tiles, setTiles] = useState<Tile[]>(() => {
     const saved = localStorage.getItem('tiles');
     if (saved) {
       // Fix any floating point precision issues in saved monetary values
+      // Also migrate tiles without mainTabId to 'home' tab
       const parsed = JSON.parse(saved);
       return parsed.map((tile: Tile) => ({
         ...tile,
@@ -692,6 +926,8 @@ function App() {
         paymentAmount: tile.paymentAmount !== null && tile.paymentAmount !== undefined 
           ? Math.round(tile.paymentAmount * 100) / 100 
           : null,
+        // Migration: Assign existing tiles without mainTabId to 'home' tab
+        mainTabId: tile.mainTabId || 'home',
       }));
     }
     return initialTiles;
@@ -1068,13 +1304,7 @@ function App() {
               // Budget type color for home page cards
               const getBudgetColor = () => {
                 if (tile.isWebLinkOnly) return '#9E9E9E'; // Medium Grey
-                switch (tile.budgetType) {
-                  case 'Bill': return '#4169E1'; // Royal Blue
-                  case 'Subscription': return '#87CEEB'; // Light Blue
-                  case 'Expense': return '#FF6B6B'; // Light Red
-                  case 'Savings': return '#4CAF50'; // Green
-                  default: return null;
-                }
+                return tile.budgetType ? (budgetTypeColors[tile.budgetType] || null) : null;
               };
               const budgetColor = getBudgetColor();
               const budgetTypeLabel = tile.isWebLinkOnly ? 'Web Link Only' : tile.budgetType;
@@ -1186,7 +1416,7 @@ function App() {
                     ✏️
                   </button>
                   {/* Cancel Subscription button - for paid subscriptions */}
-                  {(tile.paidSubscription || tile.budgetType === 'Subscription' || tile.budgetType === 'Bill') && !tile.isCancelled && (
+                  {(tile.paidSubscription || isPaidBudgetType(tile.budgetType)) && !tile.isCancelled && (
                     <button
                       className="home-card-cancel-btn"
                       onClick={(e) => {
@@ -1294,13 +1524,7 @@ function App() {
     const paymentDueSoon = isPaymentDueSoon(tile, 5);
     const getBudgetColor = () => {
       if (tile.isWebLinkOnly) return '#9E9E9E';
-      switch (tile.budgetType) {
-        case 'Bill': return '#4169E1';
-        case 'Subscription': return '#87CEEB';
-        case 'Expense': return '#FF6B6B';
-        case 'Savings': return '#4CAF50';
-        default: return null;
-      }
+      return tile.budgetType ? (budgetTypeColors[tile.budgetType] || null) : null;
     };
     const budgetColor = getBudgetColor();
     const budgetTypeLabel = tile.isWebLinkOnly ? 'Web Link Only' : tile.budgetType;
@@ -1424,7 +1648,7 @@ function App() {
           ✏️
         </button>
         {/* Cancel Subscription button - for paid subscriptions */}
-        {(tile.paidSubscription || tile.budgetType === 'Subscription' || tile.budgetType === 'Bill') && !tile.isCancelled && (
+        {(tile.paidSubscription || isPaidBudgetType(tile.budgetType)) && !tile.isCancelled && (
           <button
             className="home-card-cancel-btn"
             onClick={(e) => {
@@ -1491,6 +1715,40 @@ function App() {
             ♻️
           </button>
         )}
+        {/* Delete button - appears on hover */}
+        <button
+          className="home-card-delete-btn"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (window.confirm(`Are you sure you want to delete "${tile.name}"? This action cannot be undone.`)) {
+              handleDeleteTile(tile.id);
+            }
+          }}
+          title="Delete card"
+          style={{
+            position: 'absolute',
+            bottom: -6,
+            right: -6,
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            border: 'none',
+            background: '#757575',
+            color: '#fff',
+            fontSize: 9,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0,
+            transition: 'opacity 0.2s ease, transform 0.2s ease',
+            zIndex: 10,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          }}
+        >
+          🗑️
+        </button>
       </div>
     );
   }
@@ -1502,11 +1760,12 @@ function App() {
       data: { type: 'category', categoryId: category.id },
     });
     
-    // Filter cards that belong to this budget category AND match the selected home page tab
+    // Filter cards that belong to this budget category AND match the selected main tab AND home page tab
     const categoryCards = tiles.filter(t => {
+      const matchesMainTab = t.mainTabId === selectedMainTab; // Home Apps vs Business Apps
       const matchesCategory = t.budgetCategory === category.id;
       const matchesTab = selectedHomePageTab === 'all' || t.homePageTabId === selectedHomePageTab || !t.homePageTabId;
-      return matchesCategory && matchesTab;
+      return matchesMainTab && matchesCategory && matchesTab;
     });
     
     // Calculate monthly and annual spend for this category
@@ -1522,14 +1781,15 @@ function App() {
     }, 0);
 
     // Check if there are uncategorized cards that need a home (in current tab view)
+    // First filter by main tab (Home Apps vs Business Apps)
+    const mainTabFiltered = tiles.filter(t => t.mainTabId === selectedMainTab);
     const filteredByTab = selectedHomePageTab === 'all'
-      ? tiles
-      : tiles.filter(t => t.homePageTabId === selectedHomePageTab || !t.homePageTabId);
+      ? mainTabFiltered
+      : mainTabFiltered.filter(t => t.homePageTabId === selectedHomePageTab || !t.homePageTabId);
     const hasUncategorizedCards = filteredByTab.some(t => !t.budgetCategory);
     
-    // Don't render if no cards in this category AND not being hovered AND no uncategorized cards
-    // (We want to show empty categories as drop targets when there are uncategorized cards)
-    if (categoryCards.length === 0 && !isOver && !hasUncategorizedCards) return null;
+    // Always show all categories (even empty ones) - removed the condition that hid empty categories
+    // Empty categories serve as drop targets and help users understand the category structure
 
     return (
       <div
@@ -1603,72 +1863,6 @@ function App() {
               Monthly: ${monthlySpend.toFixed(2)} • Annual: ${annualSpend.toFixed(2)}
             </div>
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowTileModal(true);
-              setEditTileId(null);
-              setForm({
-                name: '',
-                description: '',
-                link: '',
-                logo: '',
-                category: '',
-                subcategory: '',
-                appType: 'web',
-                localPath: '',
-                paidSubscription: false,
-                paymentFrequency: null,
-                annualType: null,
-                paymentAmount: null,
-                signupDate: null,
-                lastPaymentDate: null,
-                creditCardId: null,
-                paymentTypeLast4: '',
-                creditCardName: '',
-                accountLink: '',
-                notes: '',
-                isWebLinkOnly: false,
-                budgetType: null,
-                budgetAmount: null,
-                budgetPeriod: null,
-                budgetCategory: category.id,
-                budgetSubcategory: null,
-              });
-            }}
-            style={{
-              background: '#f5f5f5',
-              color: '#1976d2',
-              border: '1px solid #e0e0e0',
-              borderRadius: '50%',
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: 20,
-              fontWeight: 700,
-              transition: 'all 0.2s ease',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#e3f2fd';
-              e.currentTarget.style.transform = 'scale(1.1)';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(25, 118, 210, 0.3)';
-              e.currentTarget.style.borderColor = '#1976d2';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#f5f5f5';
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-              e.currentTarget.style.borderColor = '#e0e0e0';
-            }}
-            title={`Add new card to ${category.name}`}
-          >
-            +
-          </button>
         </div>
         <div style={{ 
           flex: 1,
@@ -1701,6 +1895,68 @@ function App() {
               +{categoryCards.length - 24}
             </div>
           )}
+          {/* Add Card button - card style at end of tile */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowTileModal(true);
+              setEditTileId(null);
+              setForm({
+                name: '',
+                description: '',
+                link: '',
+                logo: '',
+                category: category.name,
+                subcategory: '',
+                signupDate: '',
+                paymentFrequency: 'Monthly',
+                paymentAmount: 0,
+                paidSubscription: false,
+                homePageTabId: null,
+                cancellationDate: null,
+                creditCardId: null,
+                paymentTypeLast4: '',
+                creditCardName: '',
+                accountLink: '',
+                notes: '',
+                isWebLinkOnly: false,
+                budgetType: null,
+                budgetAmount: null,
+                budgetPeriod: null,
+                budgetCategory: category.id,
+                budgetSubcategory: null,
+              });
+            }}
+            style={{
+              width: 48,
+              height: 48,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#f9f9f9',
+              border: '2px dashed #ccc',
+              borderRadius: 8,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              flexShrink: 0,
+              gap: 2,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#e3f2fd';
+              e.currentTarget.style.borderColor = '#1976d2';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f9f9f9';
+              e.currentTarget.style.borderColor = '#ccc';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title={`Add new card to ${category.name}`}
+          >
+            <span style={{ fontSize: 16 }}>🃏</span>
+            <span style={{ fontSize: 8, color: '#666', fontWeight: 600 }}>Add</span>
+          </button>
           {categoryCards.length === 0 && (
             <div style={{ 
               color: isOver ? '#1976d2' : '#999', 
@@ -1729,8 +1985,8 @@ function App() {
       id: category.id,
     });
     
-    // Filter cards that belong to this budget category
-    const categoryCards = tiles.filter(t => t.budgetCategory === category.id);
+    // Filter cards that belong to this budget category AND the selected main tab
+    const categoryCards = tiles.filter(t => t.budgetCategory === category.id && t.mainTabId === selectedMainTab);
     
     // Calculate monthly and annual spend for this category
     const monthlySpend = categoryCards.reduce((sum, tile) => {
@@ -1915,13 +2171,7 @@ function App() {
               // Budget type color for home page cards
               const getBudgetColor = () => {
                 if (tile.isWebLinkOnly) return '#9E9E9E'; // Medium Grey
-                switch (tile.budgetType) {
-                  case 'Bill': return '#4169E1'; // Royal Blue
-                  case 'Subscription': return '#87CEEB'; // Light Blue
-                  case 'Expense': return '#FF6B6B'; // Light Red
-                  case 'Savings': return '#4CAF50'; // Green
-                  default: return null;
-                }
+                return tile.budgetType ? (budgetTypeColors[tile.budgetType] || null) : null;
               };
               const budgetColor = getBudgetColor();
               const budgetTypeLabel = tile.isWebLinkOnly ? 'Web Link Only' : tile.budgetType;
@@ -2029,7 +2279,7 @@ function App() {
                     ✏️
                   </button>
                   {/* Cancel Subscription button - for paid subscriptions */}
-                  {(tile.paidSubscription || tile.budgetType === 'Subscription' || tile.budgetType === 'Bill') && !tile.isCancelled && (
+                  {(tile.paidSubscription || isPaidBudgetType(tile.budgetType)) && !tile.isCancelled && (
                     <button
                       className="home-card-cancel-btn"
                       onClick={(e) => {
@@ -2162,6 +2412,8 @@ function App() {
     budgetSubcategory: null,
     // Home Page Tab assignment
     homePageTabId: null,
+    // Main Tab assignment (Home Apps, Business Apps, etc.)
+    mainTabId: null,
   });
   const [editTileId, setEditTileId] = useState<number | null>(null);
   const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
@@ -2368,6 +2620,45 @@ function App() {
     localStorage.setItem('sidebarWidth', String(sidebarWidth));
   }, [sidebarWidth]);
   
+  // Receipt files state
+  type ReceiptFile = {
+    id: number;
+    cardId: number | null;
+    cardName: string;
+    fileName: string;
+    fileType: 'pdf' | 'html' | 'image' | 'other';
+    fileData: string; // Base64 encoded file data
+    paymentDate: string;
+    paymentAmount: number;
+    uploadDate: string;
+    notes?: string;
+  };
+  
+  const [receiptFiles, setReceiptFiles] = useState<ReceiptFile[]>(() => {
+    const saved = localStorage.getItem('receiptFiles');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('receiptFiles', JSON.stringify(receiptFiles));
+  }, [receiptFiles]);
+  
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [pendingReceiptFile, setPendingReceiptFile] = useState<{
+    fileName: string;
+    fileType: 'pdf' | 'html' | 'image' | 'other';
+    fileData: string;
+  } | null>(null);
+  const [receiptForm, setReceiptForm] = useState({
+    cardId: null as number | null,
+    cardName: '',
+    paymentDate: new Date().toISOString().split('T')[0],
+    paymentAmount: 0,
+    notes: '',
+  });
+  const [receiptSearchQuery, setReceiptSearchQuery] = useState('');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  
   // Handle sidebar resize
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -2432,6 +2723,46 @@ function App() {
   useEffect(() => {
     localStorage.setItem('tabs', JSON.stringify(tabs));
   }, [tabs]);
+  
+  // FORCE FIX: Update Business Apps tab with correct business categories on every mount
+  useEffect(() => {
+    const businessTab = tabs.find(t => t.id === 'business');
+    // Check if business tab exists and has wrong categories (check for Home Apps category IDs)
+    const hasHomeCategories = businessTab?.budgetCategories?.some(
+      (c: BudgetCategory) => c.id === 'ai' || c.id === 'finance' || c.id === 'housing' || c.id === 'utilities'
+    );
+    const hasCorrectBusinessCategories = businessTab?.budgetCategories?.some(
+      (c: BudgetCategory) => c.id === 'biz-payroll' || c.id === 'biz-cogs'
+    );
+    
+    if (businessTab && hasHomeCategories && !hasCorrectBusinessCategories) {
+      console.log('FORCE FIX: Replacing Business Apps categories with correct business categories...');
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === 'business') {
+          return { ...tab, budgetCategories: defaultBusinessBudgetCategories };
+        }
+        return tab;
+      }));
+    }
+  }, []); // Run once on mount
+  
+  // Force migration: Ensure ALL tiles have mainTabId set to 'home'
+  // This runs once on mount and forces all tiles to have mainTabId
+  useEffect(() => {
+    // Check both undefined and null
+    const needsMigration = tiles.some(t => t.mainTabId === undefined || t.mainTabId === null || t.mainTabId === '');
+    if (needsMigration) {
+      console.log('Force migrating ALL tiles to add mainTabId=home...');
+      const migratedTiles = tiles.map(t => ({
+        ...t,
+        mainTabId: (t.mainTabId && t.mainTabId !== '') ? t.mainTabId : 'home'
+      }));
+      setTiles(migratedTiles);
+      // Force save to localStorage immediately
+      localStorage.setItem('tiles', JSON.stringify(migratedTiles));
+    }
+  }, []); // Run once on mount
+  
   useEffect(() => {
     localStorage.setItem('tiles', JSON.stringify(tiles));
   }, [tiles]);
@@ -2618,7 +2949,8 @@ function App() {
         )
       );
     } else {
-      setTiles([...tiles, { ...fixedForm, id: Date.now() + Math.random() }]);
+      // Auto-assign mainTabId to current selected tab when creating new tile
+      setTiles([...tiles, { ...fixedForm, id: Date.now() + Math.random(), mainTabId: selectedMainTab }]);
     }
     setShowTileModal(false);
     setEditTileId(null);
@@ -2644,7 +2976,14 @@ function App() {
     const newName = tabFormName.trim();
     if (!newName || tabs.some((tab, i) => tab.name === newName && (tabModalMode === 'add' || i !== editingTabIndex))) return;
     if (tabModalMode === 'add') {
-      setTabs([...tabs, { name: newName, hasStockTicker: tabHasStockTicker, homePageTabId: tabHomePageTabId }]);
+      const newTabId = `tab-${Date.now()}`;
+      setTabs([...tabs, { 
+        id: newTabId, 
+        name: newName, 
+        hasStockTicker: tabHasStockTicker, 
+        homePageTabId: tabHomePageTabId,
+        budgetCategories: [...defaultBudgetCategories] // New tabs start with default categories
+      }]);
       setActiveTab(newName);
     } else if (editingTabIndex !== null) {
       const oldName = tabs[editingTabIndex].name;
@@ -3307,8 +3646,8 @@ function App() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
   
-  // Filter tiles by budget category (activeTab now holds category ID)
-  const filteredTiles = tiles.filter(tile => tile.budgetCategory === activeTab);
+  // Filter tiles by budget category (activeTab now holds category ID) AND main tab
+  const filteredTiles = tiles.filter(tile => tile.budgetCategory === activeTab && tile.mainTabId === selectedMainTab);
   const filteredTileIds = filteredTiles.map(tile => tile.id);
   
   // Group tiles by subcategory
@@ -3516,10 +3855,7 @@ function App() {
                 style={{ marginLeft: 8, fontSize: 12 }} 
                 title={`Budget: ${tile.budgetType}${tile.budgetAmount ? ` - ${formatCurrency(tile.budgetAmount)}/${tile.budgetPeriod === 'Monthly' ? 'mo' : 'yr'}` : ''}`}
               >
-                {tile.budgetType === 'Bill' && '💡'}
-                {tile.budgetType === 'Subscription' && '🔄'}
-                {tile.budgetType === 'Expense' && '💳'}
-                {tile.budgetType === 'Savings' && '💰'}
+                {budgetTypeIcons[tile.budgetType] || '📊'}
               </span>
             )}
             {tile.isWebLinkOnly && (
@@ -3845,17 +4181,24 @@ function App() {
             <span style={{ fontSize: 22, marginRight: 12 }}>🏠</span> Home Page
           </div>
           
-          {/* Budget Categories Submenu - Shows categories that have tiles */}
+          {/* Budget Categories for selected main tab */}
           {mainMenu === 'home' && (
-            <div style={{ marginLeft: 24, marginTop: 12 }}>
-              {/* Divider */}
+            <div style={{ marginLeft: 12, marginTop: 12, marginRight: 12 }}>
+              {/* Current tab indicator */}
               <div style={{ 
-                height: 1, 
-                background: '#ddd', 
-                marginBottom: 12 
-              }}></div>
+                padding: '8px 12px',
+                marginBottom: 12,
+                background: '#e3f2fd',
+                borderRadius: 6,
+                fontWeight: 600,
+                fontSize: 13,
+                color: '#1976d2',
+                textAlign: 'center',
+              }}>
+                {tabs.find(t => t.id === selectedMainTab)?.name || 'Home Apps'}
+              </div>
               
-              {/* All Web Tiles - shows all cards */}
+              {/* All Cards for selected tab */}
               <div style={{ marginBottom: 8 }}>
                 <div
                   style={{
@@ -3865,7 +4208,7 @@ function App() {
                     cursor: 'pointer',
                     color: activeTab === '' ? '#fff' : '#333',
                     fontWeight: 600,
-                    fontSize: 15,
+                    fontSize: 14,
                     borderRadius: 6,
                     background: activeTab === '' ? '#64b5f6' : 'none',
                     transition: 'background 0.2s, color 0.2s',
@@ -3896,19 +4239,19 @@ function App() {
                   <span 
                     style={{ flex: 1 }}
                     onClick={() => { setMainMenu('home'); setActiveTab(''); }}
-                  >All Web Tiles</span>
-                  <span style={{ fontSize: 12, opacity: 0.7, marginLeft: 4 }}>
-                    ({tiles.length})
+                  >{tabs.find(t => t.id === selectedMainTab)?.name || 'All Cards'}</span>
+                  <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 4 }}>
+                    ({tiles.filter(t => t.mainTabId === selectedMainTab).length})
                   </span>
                 </div>
                 
-                {/* Budget Categories under All Web Tiles */}
+                {/* Budget Categories for selected tab */}
                 {categoriesExpanded && (
                 <div style={{ marginLeft: 16, marginTop: 4 }}>
-                  {budgetCategories
-                    .filter(cat => tiles.some(t => t.budgetCategory === cat.id))
+                  {currentTabBudgetCategories
+                    .filter(cat => tiles.some(t => t.budgetCategory === cat.id && t.mainTabId === selectedMainTab))
                     .map((category) => {
-                      const categoryTiles = tiles.filter(t => t.budgetCategory === category.id);
+                      const categoryTiles = tiles.filter(t => t.budgetCategory === category.id && t.mainTabId === selectedMainTab);
                       return (
                         <div
                           key={category.id}
@@ -3923,7 +4266,7 @@ function App() {
                             background: activeTab === category.id ? '#1976d2' : 'none',
                             borderRadius: 6,
                             marginBottom: 2,
-                            fontSize: 14,
+                            fontSize: 13,
                             transition: 'background 0.2s, color 0.2s',
                           }}
                           onMouseEnter={(e) => {
@@ -3947,14 +4290,14 @@ function App() {
                         </div>
                       );
                     })}
-                  {!budgetCategories.some(cat => tiles.some(t => t.budgetCategory === cat.id)) && (
+                  {!currentTabBudgetCategories.some(cat => tiles.some(t => t.budgetCategory === cat.id && t.mainTabId === selectedMainTab)) && (
                     <div style={{ 
                       padding: '6px 8px', 
                       color: '#64b5f688', 
                       fontSize: 13, 
                       fontStyle: 'italic' 
                     }}>
-                      No categorized tiles
+                      No categorized cards
                     </div>
                   )}
                 </div>
@@ -4485,79 +4828,53 @@ function App() {
             {/* Conditional Content Based on View Mode */}
             {homePageView === 'tiles' && (
               <>
-            {/* Home Page Tab Selector */}
-            {homePageTabs.length > 1 && (
-              <div style={{ 
-                display: 'flex', 
-                gap: 0, 
-                marginBottom: 24, 
-                overflowX: 'auto',
-                borderBottom: '2px solid #e0e0e0',
-                position: 'relative'
-              }}>
-                {homePageTabs.map((hpt) => (
-                  <button
-                    key={hpt.id}
-                    onClick={() => setSelectedHomePageTab(hpt.id)}
-                    style={{
-                      padding: '14px 24px',
-                      background: 'transparent',
-                      color: selectedHomePageTab === hpt.id ? '#1976d2' : '#666',
-                      border: 'none',
-                      borderBottom: selectedHomePageTab === hpt.id ? '3px solid #1976d2' : '3px solid transparent',
-                      fontSize: 15,
-                      fontWeight: selectedHomePageTab === hpt.id ? 600 : 400,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      whiteSpace: 'nowrap',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      position: 'relative',
-                      marginBottom: '-2px',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selectedHomePageTab !== hpt.id) {
-                        e.currentTarget.style.color = '#1976d2';
-                        e.currentTarget.style.background = '#f5f9fc';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedHomePageTab !== hpt.id) {
-                        e.currentTarget.style.color = '#666';
-                        e.currentTarget.style.background = 'transparent';
-                      }
-                    }}
-                  >
-                    {hpt.name}
-                    {hpt.id !== 'all' && (
-                      <>
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditHomePageTabModal(hpt.id);
-                          }}
-                          style={{ cursor: 'pointer', fontSize: 14, opacity: 0.6 }}
-                          title="Edit tab"
-                        >
-                          ✏️
-                        </span>
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteHomePageTab(hpt.id);
-                          }}
-                          style={{ cursor: 'pointer', fontSize: 14, opacity: 0.6 }}
-                          title="Delete tab"
-                        >
-                          🗑️
-                        </span>
-                      </>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Main Tab Selector - Home Apps / Business Apps */}
+            <div style={{ 
+              display: 'flex', 
+              gap: 0, 
+              marginBottom: 24, 
+              overflowX: 'auto',
+              borderBottom: '2px solid #e0e0e0',
+              position: 'relative'
+            }}>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { setSelectedMainTab(tab.id); setActiveTab(''); }}
+                  style={{
+                    padding: '14px 24px',
+                    background: 'transparent',
+                    color: selectedMainTab === tab.id ? '#1976d2' : '#666',
+                    border: 'none',
+                    borderBottom: selectedMainTab === tab.id ? '3px solid #1976d2' : '3px solid transparent',
+                    fontSize: 15,
+                    fontWeight: selectedMainTab === tab.id ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    position: 'relative',
+                    marginBottom: '-2px',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedMainTab !== tab.id) {
+                      e.currentTarget.style.color = '#1976d2';
+                      e.currentTarget.style.background = '#f5f9fc';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedMainTab !== tab.id) {
+                      e.currentTarget.style.color = '#666';
+                      e.currentTarget.style.background = 'transparent';
+                    }
+                  }}
+                >
+                  {tab.name}
+                </button>
+              ))}
+            </div>
             
             {/* Two Column Layout: Main Content + Sidebar */}
             <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
@@ -4566,10 +4883,13 @@ function App() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* Get categories that have at least one card */}
                 {(() => {
+                  // Filter tiles by main tab first (Home Apps / Business Apps) - strict filtering
+                  const mainTabTiles = tiles.filter(t => t.mainTabId === selectedMainTab);
+                  
                   // Filter tiles based on selected home page tab
                   let filteredByTab = selectedHomePageTab === 'all'
-                    ? tiles
-                    : tiles.filter(t => t.homePageTabId === selectedHomePageTab || (!t.homePageTabId && selectedHomePageTab === 'all'));
+                    ? mainTabTiles
+                    : mainTabTiles.filter(t => t.homePageTabId === selectedHomePageTab || (!t.homePageTabId && selectedHomePageTab === 'all'));
                   
                   // Also filter by activeTab if it's set to a budget category
                   if (activeTab && activeTab !== '') {
@@ -4577,24 +4897,27 @@ function App() {
                   }
                   
                   // Show all categories when dragging OR when there are uncategorized cards that need a home
-                  const hasUncategorizedCards = tiles.some(t => !t.budgetCategory);
+                  const hasUncategorizedCards = mainTabTiles.some(t => !t.budgetCategory);
                   
                   // If filtering by a specific category, only show that category
                   // Always exclude 'cancelled' category from regular grid - it has its own section
+                  // Use currentTabBudgetCategories instead of global budgetCategories
                   let categoriesToShow;
                   if (activeTab && activeTab !== '') {
-                    categoriesToShow = budgetCategories.filter(cat => cat.id === activeTab && cat.id !== 'cancelled');
+                    categoriesToShow = currentTabBudgetCategories.filter(cat => cat.id === activeTab && !cat.id.includes('cancelled'));
                   } else if (activeCardId || hasUncategorizedCards) {
-                    categoriesToShow = budgetCategories.filter(cat => cat.id !== 'cancelled'); // Show all except cancelled when dragging
+                    categoriesToShow = currentTabBudgetCategories.filter(cat => !cat.id.includes('cancelled')); // Show all except cancelled when dragging
                   } else {
-                    categoriesToShow = budgetCategories.filter(cat => cat.id !== 'cancelled' && filteredByTab.some(t => t.budgetCategory === cat.id));
+                    // Always show ALL categories for the tab (even empty ones)
+                    // This ensures empty categories remain visible after adding cards
+                    categoriesToShow = currentTabBudgetCategories.filter(cat => !cat.id.includes('cancelled'));
                   }
                   
                   // Also check for uncategorized cards (cards without budgetCategory) - only show when viewing all
-                  const uncategorizedCards = activeTab === '' ? tiles.filter(t => !t.budgetCategory) : [];
+                  const uncategorizedCards = activeTab === '' ? mainTabTiles.filter(t => !t.budgetCategory) : [];
                   
-                  // Get cancelled subscriptions for display
-                  const cancelledCards = tiles.filter(t => t.budgetCategory === 'cancelled' || t.cancellationDate);
+                  // Get cancelled subscriptions for display (only for this main tab)
+                  const cancelledCards = mainTabTiles.filter(t => t.budgetCategory === 'cancelled' || t.cancellationDate);
                   
                   // Handler for card drag between categories
                   const handleCardDragEnd = (event: any) => {
@@ -4975,6 +5298,40 @@ function App() {
                                   >
                                     ♻️ Restore
                                   </button>
+                                  {/* Delete button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Are you sure you want to delete "${tile.name}"? This action cannot be undone.`)) {
+                                        handleDeleteTile(tile.id);
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: 4,
+                                      border: 'none',
+                                      background: '#ffebee',
+                                      color: '#c62828',
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s ease',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.background = '#c62828';
+                                      e.currentTarget.style.color = '#fff';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.background = '#ffebee';
+                                      e.currentTarget.style.color = '#c62828';
+                                    }}
+                                    title="Delete this card permanently"
+                                  >
+                                    🗑️ Delete
+                                  </button>
                                 </div>
                               ))}
                             </div>
@@ -5003,8 +5360,8 @@ function App() {
                 gap: 16,
               }}>
                 {(() => {
-                  // All tiles are shown (homePageTabs filtering simplified for now)
-                  const filteredTiles = tiles;
+                  // Filter tiles by main tab (Home Apps vs Business Apps)
+                  const filteredTiles = tiles.filter(t => t.mainTabId === selectedMainTab);
                   
                   // Get filtered upcoming payments
                   const filteredUpcomingPayments = getUpcomingPaymentsThisMonth(filteredTiles);
@@ -5021,8 +5378,8 @@ function App() {
                     sum + (t.paymentFrequency === 'Annually' && typeof t.paymentAmount === 'number' ? t.paymentAmount : 0), 0
                   );
                   
-                  // Calculate annual savings from cancelled subscriptions
-                  const cancelledTiles = tiles.filter(t => t.isCancelled || t.budgetCategory === 'cancelled');
+                  // Calculate annual savings from cancelled subscriptions (for current main tab)
+                  const cancelledTiles = tiles.filter(t => (t.isCancelled || t.budgetCategory === 'cancelled') && t.mainTabId === selectedMainTab);
                   const annualSavings = cancelledTiles.reduce((sum, t) => {
                     const amount = t.budgetAmount || t.paymentAmount || 0;
                     const freq = t.budgetPeriod || t.paymentFrequency || '';
@@ -5420,6 +5777,24 @@ function App() {
             {/* Calendar Budget View */}
             {homePageView === 'budget' && (
               <div style={{ marginTop: 0 }}>
+                {/* Tab indicator for Calendar Budget */}
+                <div style={{ 
+                  marginBottom: 16, 
+                  padding: '10px 16px', 
+                  background: '#e3f2fd', 
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <span style={{ fontWeight: 600, color: '#1976d2' }}>
+                    📊 {tabs.find(t => t.id === selectedMainTab)?.name || 'Home Apps'} Budget
+                  </span>
+                  <span style={{ fontSize: 12, color: '#666' }}>
+                    Showing budget for selected tab only
+                  </span>
+                </div>
+                
                 {/* Year Selector and Month Tabs */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -5528,8 +5903,11 @@ function App() {
                   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
                   const monthKey = `${calendarReportYear}-${String(calendarReportMonth + 1).padStart(2, '0')}`;
                   
-                  // Get all tiles with budget info
-                  const budgetTiles = tiles.filter(t => t.budgetAmount || t.paymentAmount || t.budgetType);
+                  // Get all tiles with budget info - filtered by selected main tab (strict)
+                  const budgetTiles = tiles.filter(t => 
+                    (t.budgetAmount || t.paymentAmount || t.budgetType) && 
+                    t.mainTabId === selectedMainTab
+                  );
                   const sortedTiles = [...budgetTiles].sort((a, b) => {
                     const catA = a.budgetCategory || 'zzz';
                     const catB = b.budgetCategory || 'zzz';
@@ -5665,18 +6043,58 @@ function App() {
                                   }
                                   paymentDateStr = paymentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                                   
-                                  if (freq === 'Annually') {
-                                    // Annual: only show full amount in the payment month
-                                    isPaymentMonth = signupMonth === calendarReportMonth;
-                                    monthlyBudget = isPaymentMonth ? amount : 0;
-                                  } else if (freq === 'Monthly') {
-                                    // Monthly: show amount every month
-                                    monthlyBudget = amount;
-                                    isPaymentMonth = true;
+                                  // Calculate monthly budget based on frequency
+                                  switch (freq) {
+                                    case 'Weekly':
+                                      // 52 weeks per year, ~4.33 per month
+                                      monthlyBudget = amount * (52 / 12);
+                                      isPaymentMonth = true;
+                                      paymentDateStr = 'Weekly';
+                                      break;
+                                    case 'Bi-Weekly':
+                                      // 26 pay periods per year, ~2.17 per month
+                                      monthlyBudget = amount * (26 / 12);
+                                      isPaymentMonth = true;
+                                      paymentDateStr = 'Bi-Weekly';
+                                      break;
+                                    case 'Semi-Monthly':
+                                      // 24 pay periods per year, exactly 2 per month
+                                      monthlyBudget = amount * 2;
+                                      isPaymentMonth = true;
+                                      paymentDateStr = '1st & 15th';
+                                      break;
+                                    case 'Monthly':
+                                      // Monthly: show amount every month
+                                      monthlyBudget = amount;
+                                      isPaymentMonth = true;
+                                      break;
+                                    case 'Quarterly':
+                                      // Quarterly: show full amount every 3 months starting from signup month
+                                      isPaymentMonth = (calendarReportMonth - signupMonth + 12) % 3 === 0;
+                                      monthlyBudget = isPaymentMonth ? amount : 0;
+                                      if (!isPaymentMonth) paymentDateStr = '-';
+                                      break;
+                                    case 'Annually':
+                                      // Annual: only show full amount in the payment month
+                                      isPaymentMonth = signupMonth === calendarReportMonth;
+                                      monthlyBudget = isPaymentMonth ? amount : 0;
+                                      if (!isPaymentMonth) paymentDateStr = '-';
+                                      break;
+                                    default:
+                                      monthlyBudget = amount;
+                                      isPaymentMonth = true;
                                   }
                                 } else {
-                                  // No signup date - fall back to old logic
-                                  monthlyBudget = freq === 'Monthly' ? amount : (freq === 'Annually' ? amount / 12 : 0);
+                                  // No signup date - fall back to averaged monthly amounts
+                                  switch (freq) {
+                                    case 'Weekly': monthlyBudget = amount * (52 / 12); break;
+                                    case 'Bi-Weekly': monthlyBudget = amount * (26 / 12); break;
+                                    case 'Semi-Monthly': monthlyBudget = amount * 2; break;
+                                    case 'Monthly': monthlyBudget = amount; break;
+                                    case 'Quarterly': monthlyBudget = amount / 3; break;
+                                    case 'Annually': monthlyBudget = amount / 12; break;
+                                    default: monthlyBudget = amount;
+                                  }
                                 }
                                 
                                 // For cancelled subscriptions, show as negative (savings)
@@ -5782,19 +6200,36 @@ function App() {
                                         }}>$</span>
                                         <input
                                           type="text"
-                                          value={monthlyBudget > 0 ? monthlyBudget.toFixed(2) : ''}
-                                          onChange={(e) => {
+                                          defaultValue={monthlyBudget > 0 ? monthlyBudget.toFixed(2) : ''}
+                                          key={`budget-${tile.id}-${monthKey}-${monthlyBudget}`}
+                                          onBlur={(e) => {
                                             const value = e.target.value.replace(/[^0-9.]/g, '');
                                             const newBudget = parseFloat(value) || 0;
-                                            const newAmount = freq === 'Annually' ? newBudget * 12 : newBudget;
-                                            setTiles(prevTiles => prevTiles.map(t => {
-                                              if (t.id !== tile.id) return t;
-                                              return { ...t, budgetAmount: newAmount, paymentAmount: newAmount };
-                                            }));
+                                            if (newBudget !== monthlyBudget) {
+                                              // Convert monthly budget back to per-period amount
+                                              let newAmount = newBudget;
+                                              switch (freq) {
+                                                case 'Weekly': newAmount = newBudget / (52 / 12); break;
+                                                case 'Bi-Weekly': newAmount = newBudget / (26 / 12); break;
+                                                case 'Semi-Monthly': newAmount = newBudget / 2; break;
+                                                case 'Monthly': newAmount = newBudget; break;
+                                                case 'Quarterly': newAmount = newBudget; break; // Quarterly shows full amount
+                                                case 'Annually': newAmount = newBudget; break; // Annually shows full amount
+                                              }
+                                              setTiles(prevTiles => prevTiles.map(t => {
+                                                if (t.id !== tile.id) return t;
+                                                return { ...t, budgetAmount: newAmount, paymentAmount: newAmount };
+                                              }));
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.currentTarget.blur();
+                                            }
                                           }}
                                           placeholder="0.00"
                                           style={{
-                                            width: '60px',
+                                            width: '70px',
                                             padding: '4px 6px 4px 3px',
                                             border: 'none',
                                             fontSize: 12,
@@ -5806,6 +6241,57 @@ function App() {
                                       </div>
                                     </div>
                                     <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                                      {/* Receipt icon - shows if there's a receipt for this card in this month */}
+                                      {(() => {
+                                        const tileReceipts = receiptFiles.filter(r => {
+                                          if (r.cardId !== tile.id) return false;
+                                          const receiptDate = new Date(r.paymentDate);
+                                          return receiptDate.getFullYear() === calendarReportYear && 
+                                                 receiptDate.getMonth() === calendarReportMonth;
+                                        });
+                                        if (tileReceipts.length > 0) {
+                                          return (
+                                            <button
+                                              onClick={() => {
+                                                // Open first receipt in new tab
+                                                const receipt = tileReceipts[0];
+                                                const newWindow = window.open();
+                                                if (newWindow) {
+                                                  if (receipt.fileType === 'pdf' || receipt.fileType === 'image') {
+                                                    newWindow.document.write(`<iframe src="${receipt.fileData}" style="width:100%;height:100%;border:none;"></iframe>`);
+                                                  } else if (receipt.fileType === 'html') {
+                                                    const htmlContent = atob(receipt.fileData.split(',')[1]);
+                                                    newWindow.document.write(htmlContent);
+                                                  } else {
+                                                    newWindow.location.href = receipt.fileData;
+                                                  }
+                                                }
+                                              }}
+                                              title={`View receipt${tileReceipts.length > 1 ? ` (${tileReceipts.length} receipts)` : ''}`}
+                                              style={{
+                                                background: '#e8f5e9',
+                                                border: '1px solid #a5d6a7',
+                                                borderRadius: 4,
+                                                padding: '3px 5px',
+                                                cursor: 'pointer',
+                                                fontSize: 12,
+                                                transition: 'all 0.2s ease',
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = '#4caf50';
+                                                e.currentTarget.style.borderColor = '#4caf50';
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = '#e8f5e9';
+                                                e.currentTarget.style.borderColor = '#a5d6a7';
+                                              }}
+                                            >
+                                              🧾{tileReceipts.length > 1 ? tileReceipts.length : ''}
+                                            </button>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
                                       {/* Copy Budget to Actual button */}
                                       <button
                                         onClick={() => {
@@ -5864,28 +6350,36 @@ function App() {
                                         }}>$</span>
                                         <input
                                           type="text"
-                                          value={actual > 0 ? actual.toFixed(2) : ''}
-                                          onChange={(e) => {
+                                          defaultValue={actual > 0 ? actual.toFixed(2) : ''}
+                                          key={`actual-${tile.id}-${monthKey}-${actual}`}
+                                          onBlur={(e) => {
                                             const value = e.target.value.replace(/[^0-9.]/g, '');
                                             const newActual = parseFloat(value) || 0;
-                                            setTiles(prevTiles => prevTiles.map(t => {
-                                              if (t.id !== tile.id) return t;
-                                              return {
-                                                ...t,
-                                                budgetHistory: {
-                                                  ...t.budgetHistory,
-                                                  [monthKey]: {
-                                                    ...t.budgetHistory?.[monthKey],
-                                                    budget: monthlyBudget,
-                                                    actual: newActual,
+                                            if (newActual !== actual) {
+                                              setTiles(prevTiles => prevTiles.map(t => {
+                                                if (t.id !== tile.id) return t;
+                                                return {
+                                                  ...t,
+                                                  budgetHistory: {
+                                                    ...t.budgetHistory,
+                                                    [monthKey]: {
+                                                      ...t.budgetHistory?.[monthKey],
+                                                      budget: monthlyBudget,
+                                                      actual: newActual,
+                                                    }
                                                   }
-                                                }
-                                              };
-                                            }));
+                                                };
+                                              }));
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.currentTarget.blur();
+                                            }
                                           }}
                                           placeholder="0.00"
                                           style={{
-                                            width: '60px',
+                                            width: '70px',
                                             padding: '4px 6px 4px 3px',
                                             border: 'none',
                                             fontSize: 12,
@@ -6252,188 +6746,44 @@ function App() {
                   </button>
                 );
                 })()}
-                <button
-                  onClick={openAddSubcategoryModal}
-                  title="Manage Subcategories"
-                  style={{
-                    background: '#e3f2fd',
-                    color: '#1976d2',
-                    border: '2px solid #1976d2',
-                    borderRadius: 6,
-                    padding: '8px 16px',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    transition: 'all 0.2s ease',
-                  }}
+                <span
+                  className="edit-icon"
+                  title="Edit Category"
+                  style={{ fontSize: 22, color: '#1976d2', cursor: 'pointer', background: '#e3f2fd', borderRadius: '50%', padding: 6, transition: 'all 0.2s ease' }}
+                  onClick={() => openEditBudgetCategoryModal(activeTab)}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = '#1976d2';
                     e.currentTarget.style.color = '#fff';
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(25, 118, 210, 0.3)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#e3f2fd';
-                    e.currentTarget.style.color = '#1976d2';
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  📁 Subcategories
-                </button>
-                <button
-                  onClick={() => {
-                    setShowTileModal(true);
-                    setEditTileId(null);
-                    setForm({
-                      name: '',
-                      description: '',
-                      link: '',
-                      logo: '',
-                      category: activeTab,
-                      subcategory: '',
-                      appType: 'web',
-                      localPath: '',
-                      paidSubscription: false,
-                      paymentFrequency: null,
-                      annualType: null,
-                      paymentAmount: null,
-                      signupDate: null,
-                      lastPaymentDate: null,
-                      creditCardId: null,
-                      paymentTypeLast4: '',
-                      creditCardName: '',
-                      accountLink: '',
-                      notes: '',
-                    });
-                  }}
-                  title="Add New Card"
-                  style={{
-                    background: '#f5f5f5',
-                    color: '#1976d2',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '50%',
-                    width: 40,
-                    height: 40,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    fontSize: 22,
-                    fontWeight: 700,
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#e3f2fd';
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(25, 118, 210, 0.3)';
-                    e.currentTarget.style.borderColor = '#1976d2';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#f5f5f5';
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-                    e.currentTarget.style.borderColor = '#e0e0e0';
-                  }}
-                >
-                  +
-                </button>
-                <span
-                  className="edit-icon"
-                  title="Edit Tab"
-                  style={{ fontSize: 22, color: '#1976d2', cursor: 'pointer', background: '#e3f2fd', borderRadius: '50%', padding: 6, transition: 'all 0.2s ease' }}
-                  onClick={() => openEditTabModal(tabs.findIndex(tab => tab.name === activeTab))}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#1976d2';
                     e.currentTarget.style.transform = 'scale(1.15) rotate(5deg)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = '#e3f2fd';
+                    e.currentTarget.style.color = '#1976d2';
                     e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
                   }}
                   role="button"
                   tabIndex={0}
                 >✏️</span>
-                {tabs.length > 1 && (
+                {activeTab !== 'cancelled' && (
                   <span
                     className="edit-icon"
-                    title="Delete Tab"
+                    title="Delete Category"
                     style={{ fontSize: 22, color: '#e53935', cursor: 'pointer', background: '#ffebee', borderRadius: '50%', padding: 6, transition: 'all 0.2s ease' }}
-                    onClick={() => handleDeleteTab(tabs.findIndex(tab => tab.name === activeTab))}
+                    onClick={() => handleDeleteBudgetCategory(activeTab)}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = '#e53935';
+                      e.currentTarget.style.color = '#fff';
                       e.currentTarget.style.transform = 'scale(1.15)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = '#ffebee';
+                      e.currentTarget.style.color = '#e53935';
                       e.currentTarget.style.transform = 'scale(1)';
                     }}
                     role="button"
                     tabIndex={0}
                   >🗑️</span>
                 )}
-                <button
-                  className="create-tile-btn"
-                  onClick={() => {
-                    setShowTileModal(true);
-                    setEditTileId(null);
-                    setForm(f => ({
-                      ...f,
-                      name: '',
-                      description: '',
-                      link: '',
-                      logo: '',
-                      category: activeTab,
-                      subcategory: '',
-                      appType: 'web',
-                      localPath: '',
-                      paidSubscription: false,
-                      paymentFrequency: null,
-                      annualType: null,
-                      paymentAmount: null,
-                      signupDate: null,
-                      lastPaymentDate: null,
-                      creditCardId: null,
-                      paymentTypeLast4: '',
-                      creditCardName: '',
-                      accountLink: '',
-                      notes: '',
-                    }));
-                  }}
-                  title="Add web shortcut card"
-                  style={{
-                    background: '#757575',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: 32,
-                    height: 32,
-                    fontSize: 20,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 2px 8px #0001',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#616161';
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(117, 117, 117, 0.4)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#757575';
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px #0001';
-                  }}
-                  aria-label="Add web shortcut card"
-                >
-                  +
-                </button>
               </div>
             </div>
             )}
@@ -6641,6 +6991,65 @@ function App() {
                             {group.tiles.map((tile, idx) => (
                               <SortableTile tile={tile} idx={idx} key={tile.id} />
                             ))}
+                            {/* Add Card button */}
+                            <div
+                              onClick={() => {
+                                setShowTileModal(true);
+                                setEditTileId(null);
+                                setForm({
+                                  name: '',
+                                  description: '',
+                                  link: '',
+                                  logo: '',
+                                  category: activeTab,
+                                  subcategory: group.name,
+                                  signupDate: '',
+                                  paymentFrequency: 'Monthly',
+                                  paymentAmount: 0,
+                                  paidSubscription: false,
+                                  homePageTabId: null,
+                                  cancellationDate: null,
+                                  creditCardId: null,
+                                  paymentTypeLast4: '',
+                                  creditCardName: '',
+                                  accountLink: '',
+                                  notes: '',
+                                  isWebLinkOnly: false,
+                                  budgetType: null,
+                                  budgetAmount: null,
+                                  budgetPeriod: null,
+                                  budgetCategory: activeTab,
+                                  budgetSubcategory: group.name,
+                                });
+                              }}
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: '#fafafa',
+                                border: '2px dashed #ccc',
+                                borderRadius: 16,
+                                minHeight: 110,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                gap: 8,
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#e3f2fd';
+                                e.currentTarget.style.borderColor = '#1976d2';
+                                e.currentTarget.style.transform = 'scale(1.02)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#fafafa';
+                                e.currentTarget.style.borderColor = '#ccc';
+                                e.currentTarget.style.transform = 'scale(1)';
+                              }}
+                              title={`Add new card to ${group.name}`}
+                            >
+                              <span style={{ fontSize: 32 }}>🃏</span>
+                              <span style={{ fontSize: 14, color: '#666', fontWeight: 600 }}>Add Card</span>
+                            </div>
                           </div>
                         ) : (
                           <div style={{ padding: '32px', textAlign: 'center', color: '#999', fontSize: 14 }}>
@@ -6735,6 +7144,65 @@ function App() {
                               {tilesWithoutSubcategory.map((tile, idx) => (
                                 <SortableTile tile={tile} idx={idx} key={tile.id} />
                               ))}
+                              {/* Add Card button */}
+                              <div
+                                onClick={() => {
+                                  setShowTileModal(true);
+                                  setEditTileId(null);
+                                  setForm({
+                                    name: '',
+                                    description: '',
+                                    link: '',
+                                    logo: '',
+                                    category: activeTab,
+                                    subcategory: '',
+                                    signupDate: '',
+                                    paymentFrequency: 'Monthly',
+                                    paymentAmount: 0,
+                                    paidSubscription: false,
+                                    homePageTabId: null,
+                                    cancellationDate: null,
+                                    creditCardId: null,
+                                    paymentTypeLast4: '',
+                                    creditCardName: '',
+                                    accountLink: '',
+                                    notes: '',
+                                    isWebLinkOnly: false,
+                                    budgetType: null,
+                                    budgetAmount: null,
+                                    budgetPeriod: null,
+                                    budgetCategory: activeTab,
+                                    budgetSubcategory: null,
+                                  });
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  background: '#fafafa',
+                                  border: '2px dashed #ccc',
+                                  borderRadius: 16,
+                                  minHeight: 110,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  gap: 8,
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#e3f2fd';
+                                  e.currentTarget.style.borderColor = '#1976d2';
+                                  e.currentTarget.style.transform = 'scale(1.02)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#fafafa';
+                                  e.currentTarget.style.borderColor = '#ccc';
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                                title="Add new card"
+                              >
+                                <span style={{ fontSize: 32 }}>🃏</span>
+                                <span style={{ fontSize: 14, color: '#666', fontWeight: 600 }}>Add Card</span>
+                              </div>
                             </div>
                           ) : subcategories.length > 0 && (
                             <div style={{ padding: '40px', textAlign: 'center', color: '#999', fontSize: 15, background: '#fafafa', borderRadius: 8, border: '2px dashed #ddd' }}>
@@ -6962,6 +7430,561 @@ function App() {
             )}
           </div>
         )}
+        {/* FILES PAGE */}
+        {mainMenu === 'files' && (
+          <div style={{ padding: '32px 24px', maxWidth: 1400, margin: '0 auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+              <h1 style={{ color: '#1976d2', fontSize: 32, fontWeight: 700, margin: 0 }}>📁 Receipt Files</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ fontSize: 14, color: '#666' }}>
+                  {receiptFiles.length} receipt{receiptFiles.length !== 1 ? 's' : ''} stored
+                </div>
+                <button
+                  onClick={() => {
+                    setMainMenu('home');
+                    setActiveTab('');
+                    setHomePageView('budget');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 16px',
+                    background: '#e3f2fd',
+                    color: '#1976d2',
+                    border: '2px solid #1976d2',
+                    borderRadius: 6,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#1976d2';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#e3f2fd';
+                    e.currentTarget.style.color = '#1976d2';
+                  }}
+                >
+                  📊 Calendar Budget
+                </button>
+              </div>
+            </div>
+            
+            {/* Drag and Drop Zone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingFile(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingFile(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingFile(false);
+                
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length > 0) {
+                  const file = files[0];
+                  const reader = new FileReader();
+                  
+                  reader.onload = (event) => {
+                    const fileData = event.target?.result as string;
+                    let fileType: 'pdf' | 'html' | 'image' | 'other' = 'other';
+                    
+                    if (file.type === 'application/pdf') {
+                      fileType = 'pdf';
+                    } else if (file.type === 'text/html' || file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+                      fileType = 'html';
+                    } else if (file.type.startsWith('image/')) {
+                      fileType = 'image';
+                    }
+                    
+                    setPendingReceiptFile({
+                      fileName: file.name,
+                      fileType,
+                      fileData,
+                    });
+                    setReceiptForm({
+                      cardId: null,
+                      cardName: '',
+                      paymentDate: new Date().toISOString().split('T')[0],
+                      paymentAmount: 0,
+                      notes: '',
+                    });
+                    setReceiptSearchQuery('');
+                    setShowReceiptModal(true);
+                  };
+                  
+                  reader.readAsDataURL(file);
+                }
+              }}
+              style={{
+                border: isDraggingFile ? '3px dashed #1976d2' : '3px dashed #ccc',
+                borderRadius: 16,
+                padding: 48,
+                textAlign: 'center',
+                background: isDraggingFile ? '#e3f2fd' : '#fafafa',
+                marginBottom: 32,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <div style={{ fontSize: 48, marginBottom: 16 }}>
+                {isDraggingFile ? '📥' : '📄'}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: isDraggingFile ? '#1976d2' : '#666', marginBottom: 8 }}>
+                {isDraggingFile ? 'Drop your file here!' : 'Drag & Drop Receipt Files Here'}
+              </div>
+              <div style={{ fontSize: 14, color: '#999' }}>
+                Supports PDF, HTML, and image files (JPG, PNG)
+              </div>
+              <div style={{ marginTop: 16 }}>
+                <label style={{
+                  display: 'inline-block',
+                  padding: '10px 24px',
+                  background: '#1976d2',
+                  color: '#fff',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'background 0.2s',
+                }}>
+                  Or Click to Browse
+                  <input
+                    type="file"
+                    accept=".pdf,.html,.htm,.jpg,.jpeg,.png,.gif,.webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (files && files.length > 0) {
+                        const file = files[0];
+                        const reader = new FileReader();
+                        
+                        reader.onload = (event) => {
+                          const fileData = event.target?.result as string;
+                          let fileType: 'pdf' | 'html' | 'image' | 'other' = 'other';
+                          
+                          if (file.type === 'application/pdf') {
+                            fileType = 'pdf';
+                          } else if (file.type === 'text/html' || file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+                            fileType = 'html';
+                          } else if (file.type.startsWith('image/')) {
+                            fileType = 'image';
+                          }
+                          
+                          setPendingReceiptFile({
+                            fileName: file.name,
+                            fileType,
+                            fileData,
+                          });
+                          setReceiptForm({
+                            cardId: null,
+                            cardName: '',
+                            paymentDate: new Date().toISOString().split('T')[0],
+                            paymentAmount: 0,
+                            notes: '',
+                          });
+                          setReceiptSearchQuery('');
+                          setShowReceiptModal(true);
+                        };
+                        
+                        reader.readAsDataURL(file);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+            
+            {/* Receipt Files List */}
+            {receiptFiles.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: 48, 
+                background: '#fff', 
+                borderRadius: 12, 
+                border: '1px solid #e0e0e0',
+              }}>
+                <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.5 }}>📋</div>
+                <div style={{ fontSize: 18, color: '#666', fontWeight: 500 }}>No receipts yet</div>
+                <div style={{ fontSize: 14, color: '#999', marginTop: 8 }}>
+                  Drag and drop receipt files above to get started
+                </div>
+              </div>
+            ) : (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e0e0e0', overflow: 'hidden' }}>
+                {/* Header */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '50px 1fr 150px 120px 120px 100px',
+                  gap: 12,
+                  padding: '12px 16px',
+                  background: '#f5f5f5',
+                  borderBottom: '1px solid #e0e0e0',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: '#666',
+                }}>
+                  <div>Type</div>
+                  <div>Company / File</div>
+                  <div>Payment Date</div>
+                  <div style={{ textAlign: 'right' }}>Amount</div>
+                  <div>Uploaded</div>
+                  <div style={{ textAlign: 'center' }}>Actions</div>
+                </div>
+                
+                {/* Receipt rows */}
+                {receiptFiles
+                  .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+                  .map((receipt) => {
+                    const linkedCard = receipt.cardId ? tiles.find(t => t.id === receipt.cardId) : null;
+                    
+                    return (
+                      <div
+                        key={receipt.id}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '50px 1fr 150px 120px 120px 100px',
+                          gap: 12,
+                          padding: '14px 16px',
+                          borderBottom: '1px solid #f0f0f0',
+                          alignItems: 'center',
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#fafafa'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        {/* File type icon */}
+                        <div style={{ fontSize: 24 }}>
+                          {receipt.fileType === 'pdf' && '📕'}
+                          {receipt.fileType === 'html' && '🌐'}
+                          {receipt.fileType === 'image' && '🖼️'}
+                          {receipt.fileType === 'other' && '📄'}
+                        </div>
+                        
+                        {/* Company / File */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {linkedCard?.logo && (
+                              <img 
+                                src={linkedCard.logo} 
+                                alt="" 
+                                style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'contain' }}
+                              />
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#333' }}>
+                                {receipt.cardName}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#999' }}>
+                                {receipt.fileName}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Payment Date */}
+                        <div style={{ fontSize: 14, color: '#666' }}>
+                          {new Date(receipt.paymentDate).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </div>
+                        
+                        {/* Amount */}
+                        <div style={{ textAlign: 'right', fontWeight: 600, color: '#333' }}>
+                          {formatCurrency(receipt.paymentAmount)}
+                        </div>
+                        
+                        {/* Upload Date */}
+                        <div style={{ fontSize: 12, color: '#999' }}>
+                          {new Date(receipt.uploadDate).toLocaleDateString()}
+                        </div>
+                        
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                          {/* View/Download button */}
+                          <button
+                            onClick={() => {
+                              // Open file in new tab
+                              const newWindow = window.open();
+                              if (newWindow) {
+                                if (receipt.fileType === 'pdf' || receipt.fileType === 'image') {
+                                  newWindow.document.write(`<iframe src="${receipt.fileData}" style="width:100%;height:100%;border:none;"></iframe>`);
+                                } else if (receipt.fileType === 'html') {
+                                  // Decode base64 and display HTML
+                                  const htmlContent = atob(receipt.fileData.split(',')[1]);
+                                  newWindow.document.write(htmlContent);
+                                } else {
+                                  newWindow.location.href = receipt.fileData;
+                                }
+                              }
+                            }}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: 4,
+                              border: 'none',
+                              background: '#e3f2fd',
+                              color: '#1976d2',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#1976d2';
+                              e.currentTarget.style.color = '#fff';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#e3f2fd';
+                              e.currentTarget.style.color = '#1976d2';
+                            }}
+                            title="View receipt"
+                          >
+                            👁️ View
+                          </button>
+                          
+                          {/* Delete button */}
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete receipt for ${receipt.cardName}?`)) {
+                                setReceiptFiles(prev => prev.filter(r => r.id !== receipt.id));
+                              }
+                            }}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: 4,
+                              border: 'none',
+                              background: '#ffebee',
+                              color: '#c62828',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#c62828';
+                              e.currentTarget.style.color = '#fff';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#ffebee';
+                              e.currentTarget.style.color = '#c62828';
+                            }}
+                            title="Delete receipt"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+            
+            {/* Receipt Modal */}
+            {showReceiptModal && pendingReceiptFile && (
+              <Modal onClose={() => { setShowReceiptModal(false); setPendingReceiptFile(null); }}>
+                <h2 style={{ marginBottom: 24 }}>📄 Add Receipt Details</h2>
+                
+                <div style={{ marginBottom: 16, padding: 12, background: '#f5f5f5', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>File:</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>
+                      {pendingReceiptFile.fileType === 'pdf' && '📕'}
+                      {pendingReceiptFile.fileType === 'html' && '🌐'}
+                      {pendingReceiptFile.fileType === 'image' && '🖼️'}
+                      {pendingReceiptFile.fileType === 'other' && '📄'}
+                    </span>
+                    <span style={{ fontWeight: 500, color: '#333' }}>{pendingReceiptFile.fileName}</span>
+                  </div>
+                </div>
+                
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  
+                  const newReceipt: ReceiptFile = {
+                    id: Date.now(),
+                    cardId: receiptForm.cardId,
+                    cardName: receiptForm.cardName || 'Unknown Company',
+                    fileName: pendingReceiptFile.fileName,
+                    fileType: pendingReceiptFile.fileType,
+                    fileData: pendingReceiptFile.fileData,
+                    paymentDate: receiptForm.paymentDate,
+                    paymentAmount: receiptForm.paymentAmount,
+                    uploadDate: new Date().toISOString(),
+                    notes: receiptForm.notes,
+                  };
+                  
+                  setReceiptFiles(prev => [...prev, newReceipt]);
+                  
+                  // Also update the budgetHistory actual field for the linked card
+                  if (receiptForm.cardId && receiptForm.paymentAmount > 0) {
+                    const paymentDate = new Date(receiptForm.paymentDate);
+                    const monthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
+                    
+                    setTiles(prevTiles => prevTiles.map(t => {
+                      if (t.id !== receiptForm.cardId) return t;
+                      
+                      // Get existing actual amount and add the new receipt amount
+                      const existingActual = t.budgetHistory?.[monthKey]?.actual || 0;
+                      const existingBudget = t.budgetHistory?.[monthKey]?.budget || t.budgetAmount || t.paymentAmount || 0;
+                      const newActual = existingActual + receiptForm.paymentAmount;
+                      
+                      return {
+                        ...t,
+                        budgetHistory: {
+                          ...t.budgetHistory,
+                          [monthKey]: {
+                            budget: existingBudget,
+                            actual: newActual,
+                            paidDate: t.budgetHistory?.[monthKey]?.paidDate,
+                            notes: t.budgetHistory?.[monthKey]?.notes,
+                          }
+                        }
+                      };
+                    }));
+                  }
+                  
+                  setShowReceiptModal(false);
+                  setPendingReceiptFile(null);
+                }}>
+                  <label style={{ display: 'block', marginBottom: 16 }}>
+                    Company / Card:<br />
+                    <div style={{ position: 'relative', marginTop: 4 }}>
+                      <input
+                        type="text"
+                        value={receiptSearchQuery || receiptForm.cardName}
+                        onChange={(e) => {
+                          setReceiptSearchQuery(e.target.value);
+                          setReceiptForm(prev => ({ ...prev, cardName: e.target.value, cardId: null }));
+                        }}
+                        placeholder="Search or type company name..."
+                        style={{ width: '100%', marginBottom: 0 }}
+                        required
+                      />
+                      {/* Search results dropdown */}
+                      {receiptSearchQuery && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          background: '#fff',
+                          border: '1px solid #e0e0e0',
+                          borderRadius: 6,
+                          maxHeight: 200,
+                          overflowY: 'auto',
+                          zIndex: 100,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        }}>
+                          {tiles
+                            .filter(t => t.name.toLowerCase().includes(receiptSearchQuery.toLowerCase()))
+                            .slice(0, 8)
+                            .map(tile => (
+                              <div
+                                key={tile.id}
+                                onClick={() => {
+                                  setReceiptForm(prev => ({ 
+                                    ...prev, 
+                                    cardId: tile.id, 
+                                    cardName: tile.name,
+                                    paymentAmount: prev.paymentAmount || tile.budgetAmount || tile.paymentAmount || 0,
+                                  }));
+                                  setReceiptSearchQuery('');
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 10,
+                                  padding: '10px 12px',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid #f0f0f0',
+                                  transition: 'background 0.2s',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              >
+                                {tile.logo ? (
+                                  <img src={tile.logo} alt="" style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'contain' }} />
+                                ) : (
+                                  <span style={{ width: 24, height: 24, background: '#e0e0e0', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+                                    {tile.name.charAt(0)}
+                                  </span>
+                                )}
+                                <span style={{ fontWeight: 500 }}>{tile.name}</span>
+                              </div>
+                            ))
+                          }
+                          {tiles.filter(t => t.name.toLowerCase().includes(receiptSearchQuery.toLowerCase())).length === 0 && (
+                            <div style={{ padding: 12, color: '#999', fontSize: 13, textAlign: 'center' }}>
+                              No matching cards. Name will be used as-is.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                    <label>
+                      Payment Date:<br />
+                      <input
+                        type="date"
+                        value={receiptForm.paymentDate}
+                        onChange={(e) => setReceiptForm(prev => ({ ...prev, paymentDate: e.target.value }))}
+                        required
+                        style={{ marginTop: 4 }}
+                      />
+                    </label>
+                    
+                    <label>
+                      Payment Amount:<br />
+                      <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
+                        <span style={{ padding: '10px 12px', background: '#f0f0f0', border: '1px solid #ccc', borderRight: 'none', borderRadius: '6px 0 0 6px' }}>$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={receiptForm.paymentAmount || ''}
+                          onChange={(e) => setReceiptForm(prev => ({ ...prev, paymentAmount: parseFloat(e.target.value) || 0 }))}
+                          placeholder="0.00"
+                          required
+                          style={{ borderRadius: '0 6px 6px 0', marginBottom: 0 }}
+                        />
+                      </div>
+                    </label>
+                  </div>
+                  
+                  <label style={{ display: 'block', marginBottom: 16 }}>
+                    Notes (optional):<br />
+                    <textarea
+                      value={receiptForm.notes}
+                      onChange={(e) => setReceiptForm(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Any additional notes..."
+                      rows={2}
+                      style={{ marginTop: 4 }}
+                    />
+                  </label>
+                  
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button type="submit">💾 Save Receipt</button>
+                    <button type="button" onClick={() => { setShowReceiptModal(false); setPendingReceiptFile(null); }}>Cancel</button>
+                  </div>
+                </form>
+              </Modal>
+            )}
+          </div>
+        )}
+        
         {/* SETTINGS PAGE */}
         {mainMenu === 'settings' && (
           <div style={{ padding: '32px 24px', maxWidth: 1200, margin: '0 auto' }}>
@@ -7132,13 +8155,27 @@ function App() {
               )}
             </div>
             
-            {/* Budget Categories Section */}
-            <div style={{ marginBottom: 48 }}>
+            {/* Budget Categories Section - Per Tab */}
+            {tabs.map((tab) => {
+              // Get the correct categories for this tab (ensure business tab has business categories)
+              const tabCategories = tab.id === 'business' 
+                ? (tab.budgetCategories?.some((c: BudgetCategory) => c.id === 'biz-payroll') 
+                    ? tab.budgetCategories 
+                    : defaultBusinessBudgetCategories)
+                : tab.budgetCategories;
+              
+              return (
+            <div key={tab.id} style={{ marginBottom: 48 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                <h2 style={{ color: '#1976d2', fontSize: 24, fontWeight: 600, margin: 0 }}>Budget Categories</h2>
+                <h2 style={{ color: '#1976d2', fontSize: 24, fontWeight: 600, margin: 0 }}>
+                  {tab.name} - Budget Categories ({tabCategories?.length || 0})
+                </h2>
                 <div style={{ display: 'flex', gap: 12 }}>
                   <button
-                    onClick={resetBudgetCategoriesToDefault}
+                    onClick={() => {
+                      setSelectedMainTab(tab.id);
+                      resetBudgetCategoriesToDefault();
+                    }}
                     style={{
                       background: '#fff3e0',
                       color: '#e65100',
@@ -7166,7 +8203,10 @@ function App() {
                     🔄 Reset to Default
                   </button>
                   <button
-                    onClick={openAddBudgetCategoryModal}
+                    onClick={() => {
+                      setSelectedMainTab(tab.id);
+                      openAddBudgetCategoryModal();
+                    }}
                     style={{
                       background: '#e3f2fd',
                       color: '#1976d2',
@@ -7197,7 +8237,7 @@ function App() {
                 </div>
               </div>
               
-              {budgetCategories.length === 0 ? (
+              {(!tabCategories || tabCategories.length === 0) ? (
                 <div style={{ 
                   background: '#f5f5f5', 
                   padding: 32, 
@@ -7229,7 +8269,7 @@ function App() {
                     <div>Subcategories</div>
                     <div style={{ textAlign: 'center' }}>Actions</div>
                   </div>
-                  {budgetCategories.map((category) => (
+                  {tabCategories.map((category) => (
                     <div 
                       key={category.id}
                       style={{ 
@@ -7257,7 +8297,10 @@ function App() {
                       </div>
                       <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
                         <span
-                          onClick={() => openEditBudgetCategoryModal(category.id)}
+                          onClick={() => {
+                            setSelectedMainTab(tab.id);
+                            openEditBudgetCategoryModal(category.id);
+                          }}
                           style={{
                             cursor: 'pointer',
                             fontSize: 18,
@@ -7277,7 +8320,10 @@ function App() {
                           ✏️
                         </span>
                         <span
-                          onClick={() => handleDeleteBudgetCategory(category.id)}
+                          onClick={() => {
+                            setSelectedMainTab(tab.id);
+                            handleDeleteBudgetCategory(category.id);
+                          }}
                           style={{
                             cursor: 'pointer',
                             fontSize: 18,
@@ -7302,6 +8348,8 @@ function App() {
                 </div>
               )}
             </div>
+            );
+            })}
           </div>
         )}
 
@@ -7832,14 +8880,14 @@ function App() {
                         budgetCategory: categoryId,
                         budgetSubcategory: null, // Reset subcategory when category changes
                         // Also update legacy category field for backward compatibility
-                        category: categoryId ? (budgetCategories.find(c => c.id === categoryId)?.name || '') : '',
+                        category: categoryId ? (currentTabBudgetCategories.find(c => c.id === categoryId)?.name || '') : '',
                       }));
                     }}
                     style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 6, border: '1px solid #ccc' }}
                     required
                   >
                     <option value="">-- Select Category --</option>
-                    {[...budgetCategories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => (
+                    {[...currentTabBudgetCategories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => (
                       <option key={cat.id} value={cat.id}>
                         {cat.icon} {cat.name}
                       </option>
@@ -7856,7 +8904,7 @@ function App() {
                       style={{ width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #ccc' }}
                     >
                       <option value="">-- None --</option>
-                      {(budgetCategories.find(c => c.id === form.budgetCategory)?.subcategories || []).map(sub => (
+                      {(currentTabBudgetCategories.find(c => c.id === form.budgetCategory)?.subcategories || []).map(sub => (
                         <option key={sub} value={sub}>{sub}</option>
                       ))}
                     </select>
@@ -7903,13 +8951,13 @@ function App() {
                       <select
                         value={form.budgetType || ''}
                         onChange={e => {
-                          const newType = e.target.value as 'Bill' | 'Subscription' | 'Expense' | 'Savings' | null || null;
-                          const isPaid = newType === 'Bill' || newType === 'Subscription';
+                          const newType = e.target.value || null;
+                          const isPaid = isPaidBudgetType(newType);
                           setForm(f => ({ 
                             ...f, 
-                            budgetType: newType,
+                            budgetType: newType as any,
                             paidSubscription: isPaid,
-                            // Sync payment fields when switching to Bill/Subscription
+                            // Sync payment fields when switching to paid types
                             paymentAmount: isPaid ? (f.budgetAmount || f.paymentAmount) : null,
                             paymentFrequency: isPaid ? (f.budgetPeriod || f.paymentFrequency || 'Monthly') : null,
                           }));
@@ -7917,10 +8965,24 @@ function App() {
                         style={{ width: '100%', padding: 8, marginTop: 4 }}
                       >
                         <option value="">-- Select Type --</option>
-                        <option value="Bill">💡 Bill (Fixed recurring payment)</option>
-                        <option value="Subscription">🔄 Subscription (Recurring service)</option>
-                        <option value="Expense">💳 Expense (Variable spending)</option>
-                        <option value="Savings">💰 Savings Goal</option>
+                        {selectedMainTab === 'business' ? (
+                          <>
+                            <option value="Operating Expense">🏢 Operating Expense (Day-to-day costs)</option>
+                            <option value="Capital Expense">🏗️ Capital Expense (Large purchases)</option>
+                            <option value="Subscription/SaaS">💻 Subscription/SaaS (Software & services)</option>
+                            <option value="Payroll">👥 Payroll (Employee costs)</option>
+                            <option value="Vendor Payment">📦 Vendor Payment (Suppliers)</option>
+                            <option value="Tax Payment">📋 Tax Payment (Taxes & permits)</option>
+                            <option value="Loan/Debt Payment">🏦 Loan/Debt Payment</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="Bill">💡 Bill (Fixed recurring payment)</option>
+                            <option value="Subscription">🔄 Subscription (Recurring service)</option>
+                            <option value="Expense">💳 Expense (Variable spending)</option>
+                            <option value="Savings">💰 Savings Goal</option>
+                          </>
+                        )}
                       </select>
                     </label>
                     
@@ -7966,8 +9028,12 @@ function App() {
                             style={{ width: '100%', padding: 8, marginTop: 4 }}
                           >
                             <option value="">-- Select Frequency --</option>
-                            <option value="Monthly">Monthly</option>
-                            <option value="Annually">Annually</option>
+                            <option value="Weekly">Weekly (52/year)</option>
+                            <option value="Bi-Weekly">Bi-Weekly (26/year)</option>
+                            <option value="Semi-Monthly">Semi-Monthly (24/year)</option>
+                            <option value="Monthly">Monthly (12/year)</option>
+                            <option value="Quarterly">Quarterly (4/year)</option>
+                            <option value="Annually">Annually (1/year)</option>
                           </select>
                         </label>
                         

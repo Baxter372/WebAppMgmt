@@ -400,3 +400,13 @@ form button[type="button"]:hover {
   transform: scale(1.2) !important;
   background: #2e7d32 !important;
 }
+
+/* Home card wrapper - show delete button on hover */
+.home-card-wrapper:hover .home-card-delete-btn {
+  opacity: 1 !important;
+}
+
+.home-card-delete-btn:hover {
+  transform: scale(1.2) !important;
+  background: #d32f2f !important;
+}
