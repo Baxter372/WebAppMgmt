@@ -1254,6 +1254,7 @@ function App() {
                   creditCardName: '',
                   accountLink: '',
                   notes: '',
+                  mainTabId: selectedMainTab, // Set to current tab when creating new card
                 });
               }}
               style={{
@@ -1926,6 +1927,7 @@ function App() {
                 budgetPeriod: null,
                 budgetCategory: category.id,
                 budgetSubcategory: null,
+                mainTabId: selectedMainTab, // Set to current tab when creating new card
               });
             }}
             style={{
@@ -6989,6 +6991,7 @@ function App() {
                                   creditCardName: '',
                                   accountLink: '',
                                   notes: '',
+                                  mainTabId: selectedMainTab, // Set to current tab when creating new card
                                 });
                               }}
                               title={`Add web shortcut card to ${group.name}`}
@@ -7061,6 +7064,7 @@ function App() {
                                   budgetPeriod: null,
                                   budgetCategory: activeTab,
                                   budgetSubcategory: group.name,
+                                  mainTabId: selectedMainTab, // Set to current tab when creating new card
                                 });
                               }}
                               style={{
@@ -7141,6 +7145,7 @@ function App() {
                                       creditCardName: '',
                                       accountLink: '',
                                       notes: '',
+                                      mainTabId: selectedMainTab, // Set to current tab when creating new card
                                     });
                                   }}
                                   title="Add web shortcut card to Uncategorized"
@@ -7214,6 +7219,7 @@ function App() {
                                     budgetPeriod: null,
                                     budgetCategory: activeTab,
                                     budgetSubcategory: null,
+                                    mainTabId: selectedMainTab, // Set to current tab when creating new card
                                   });
                                 }}
                                 style={{
@@ -8926,8 +8932,11 @@ function App() {
               {(() => {
                 // Get categories for the form's selected main tab (not the current view)
                 const formMainTabId = form.mainTabId || 'home';
-                const formTab = tabs.find(t => t.id === formMainTabId);
-                const formTabCategories = formTab?.budgetCategories || currentTabBudgetCategories;
+                // Explicitly use the correct default categories based on mainTabId
+                // This ensures we always get the right categories regardless of localStorage state
+                const formTabCategories = formMainTabId === 'business' 
+                  ? defaultBusinessBudgetCategories 
+                  : defaultBudgetCategories;
                 
                 return (
                   <div style={{ 
