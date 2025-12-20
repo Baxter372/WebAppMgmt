@@ -17,6 +17,7 @@ import {
   SortableContext,
   useSortable,
   rectSortingStrategy,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts';
@@ -81,6 +82,17 @@ type Tile = {
   isCancelled?: boolean;
   cancellationDate?: string | null;
   previousBudgetCategory?: string | null;  // Store original category before cancellation
+  // Bank Account fields (for Banking & Finance tiles)
+  hasBankAccount?: boolean;  // Enable bank account mode
+  bankAccountType?: 'Checking' | 'Savings' | 'Money Market' | 'CD' | 'Mortgage' | 'Auto Loan' | 'Personal Loan' | 'Student Loan' | 'Credit Line' | 'Other' | null;
+  bankAccountNumber?: string | null;  // Last 4 digits only
+  bankRoutingNumber?: string | null;  // Last 4 digits only
+  bankBalance?: number | null;
+  bankInterestRate?: number | null;  // APY for savings, APR for loans
+  bankMonthlyPayment?: number | null;  // For loans
+  bankPaymentDueDay?: number | null;  // Day of month (1-31)
+  bankIsLoan?: boolean;  // true for loans/mortgages
+  bankAccountOrder?: number;  // For drag-and-drop ordering on Accounts page
 };
 type HomePageTab = { id: string; name: string; };
 type BudgetCategory = { id: string; name: string; icon: string; subcategories: string[]; };
@@ -126,6 +138,33 @@ type CreditCard = {
   bankName?: string;  // For ACH and Check
   accountType?: 'Checking' | 'Savings';  // For ACH
   routingLast4?: string;  // For ACH - last 4 of routing number
+};
+type AccountType = 'Checking' | 'Savings' | 'Money Market' | 'CD' | 'Mortgage' | 'Auto Loan' | 'Personal Loan' | 'Student Loan' | 'Credit Line' | 'Other';
+type AssetType = 'Real Estate' | 'Business' | 'Vehicle' | 'Investment Property' | 'Collectibles' | 'Equipment' | 'Other Asset';
+type Account = {
+  id: string;
+  name: string;
+  bankName: string;
+  accountType: AccountType | AssetType;
+  accountNumber: string;  // Last 4 digits only for display
+  routingNumber?: string;  // Last 4 digits only for display
+  currentBalance: number;
+  interestRate?: number;  // APY for savings, APR for loans
+  creditLimit?: number;  // For credit lines
+  monthlyPayment?: number;  // For loans
+  paymentDueDay?: number;  // Day of month payment is due (1-31)
+  maturityDate?: string;  // For CDs and loans
+  notes?: string;
+  isLoan: boolean;  // true for loans/mortgages, false for bank accounts
+  isAsset?: boolean;  // true for assets (house, business, etc.)
+  link?: string;  // URL to online banking
+  dateOpened?: string;
+  linkedTileId?: number;  // Link to a Banking & Finance tile
+  order?: number;  // For drag-and-drop ordering
+  // Asset-specific fields
+  purchasePrice?: number;
+  purchaseDate?: string;
+  address?: string;  // For real estate
 };
 type FinanceChild = { amount: number; date: string; };
 type FinanceTile = { id: number; name: string; description: string; children: FinanceChild[]; };
@@ -778,6 +817,79 @@ function App() {
     }
   }, [showLanding]);
   
+  // --- Auto-restore from backup file on startup ---
+  useEffect(() => {
+    const autoRestore = async () => {
+      try {
+        const response = await fetch('/WebAppMgmt/auto-restore.json?t=' + Date.now());
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (!data) return;
+        
+        // Check if we've already restored this backup (by comparing backup date)
+        const lastAutoRestore = localStorage.getItem('lastAutoRestoreDate');
+        const backupDate = data.backupDate || data.tiles?.[0]?.id?.toString() || 'unknown';
+        
+        if (lastAutoRestore === backupDate) {
+          console.log('Auto-restore: Backup already restored, skipping.');
+          return;
+        }
+        
+        console.log('Auto-restore: Found backup, restoring data...');
+        
+        // Restore all data from the backup
+        if (data.tiles) {
+          localStorage.setItem('tiles', JSON.stringify(data.tiles));
+        }
+        if (data.tabs) {
+          localStorage.setItem('tabs', JSON.stringify(data.tabs));
+        }
+        if (data.financeTiles) {
+          localStorage.setItem('financeTiles', JSON.stringify(data.financeTiles));
+        }
+        if (data.homePageTabs) {
+          localStorage.setItem('homePageTabs', JSON.stringify(data.homePageTabs));
+        }
+        if (data.creditCards) {
+          localStorage.setItem('creditCards', JSON.stringify(data.creditCards));
+        }
+        if (data.accounts) {
+          localStorage.setItem('accounts', JSON.stringify(data.accounts));
+        }
+        if (data.stockSymbols) {
+          localStorage.setItem('stockSymbols', JSON.stringify(data.stockSymbols));
+        }
+        if (data.expandedHomePageTabs) {
+          localStorage.setItem('expandedHomePageTabs', JSON.stringify(data.expandedHomePageTabs));
+        }
+        if (data.pickedFolders) {
+          localStorage.setItem('pickedFolders', JSON.stringify(data.pickedFolders));
+        }
+        if (data.bannerTitle) {
+          localStorage.setItem('bannerTitle', data.bannerTitle);
+        }
+        if (data.lastPaymentsReminderShown) {
+          localStorage.setItem('lastPaymentsReminderShown', data.lastPaymentsReminderShown);
+        }
+        
+        // Mark this backup as restored
+        localStorage.setItem('lastAutoRestoreDate', backupDate);
+        
+        console.log('Auto-restore: Complete! Reloading page...');
+        window.location.reload();
+      } catch (error) {
+        // No backup file or error - this is normal, just continue
+        console.log('Auto-restore: No backup file found or error:', error);
+      }
+    };
+    
+    // Only auto-restore if not on landing page
+    if (!showLanding) {
+      autoRestore();
+    }
+  }, [showLanding]);
+  
   // --- HomePageTabs state and handlers ---
   const [homePageTabs, setHomePageTabs] = useState<HomePageTab[]>(() => {
     const saved = localStorage.getItem('homePageTabs');
@@ -789,7 +901,7 @@ function App() {
   }, [homePageTabs]);
   
   const [selectedHomePageTab, setSelectedHomePageTab] = useState<string>('all');
-  const [homePageView, setHomePageView] = useState<'tiles' | 'budget'>('tiles');
+  const [homePageView, setHomePageView] = useState<'tiles' | 'budget' | 'accounts'>('tiles');
   
   // --- Credit Cards state and handlers ---
   const [creditCards, setCreditCards] = useState<CreditCard[]>(() => {
@@ -800,6 +912,497 @@ function App() {
   useEffect(() => {
     localStorage.setItem('creditCards', JSON.stringify(creditCards));
   }, [creditCards]);
+  
+  // --- Accounts (Bank Accounts & Loans) state and handlers ---
+  const [accounts, setAccounts] = useState<Account[]>(() => {
+    const saved = localStorage.getItem('accounts');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('accounts', JSON.stringify(accounts));
+  }, [accounts]);
+  
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  
+  // Handle account reordering via drag and drop (supports tiles, accounts, and assets)
+  const handleAccountDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    
+    const activeIdStr = String(active.id);
+    const overIdStr = String(over.id);
+    
+    console.log('Drag end - active:', activeIdStr, 'over:', overIdStr);
+    
+    // Determine section - format: bank-tile-X, bank-account-X, loan-tile-X, loan-account-X, asset-account-X
+    const isLoanSection = activeIdStr.startsWith('loan-');
+    const isAssetSection = activeIdStr.startsWith('asset-');
+    
+    // Parse item type and ID - handle tile, account, and asset formats
+    const parseId = (idStr: string) => {
+      console.log('Parsing ID:', idStr);
+      
+      // Check for tile format: {section}-tile-{id}
+      if (idStr.includes('-tile-')) {
+        const match = idStr.match(/^(bank|loan)-tile-(.+)$/);
+        if (match) {
+          const parsedId = parseInt(match[2]);
+          console.log('Tile match:', match, 'parsedId:', parsedId);
+          return { type: 'tile' as const, id: parsedId };
+        }
+      }
+      
+      // Check for account/asset format: {section}-account-{id}
+      if (idStr.includes('-account-')) {
+        const match = idStr.match(/^(bank|loan|asset)-account-(.+)$/);
+        if (match) {
+          console.log('Account match:', match);
+          return { type: 'account' as const, id: match[2] };
+        }
+      }
+      
+      console.log('Failed to parse ID:', idStr);
+      return null;
+    };
+    
+    const activeItem = parseId(activeIdStr);
+    const overItem = parseId(overIdStr);
+    
+    console.log('Parsed - active:', activeItem, 'over:', overItem);
+    
+    if (!activeItem || !overItem) {
+      console.log('Parse failed, returning early');
+      return;
+    }
+    
+    // Build unified list of items with order based on section
+    type UnifiedItem = { type: 'tile' | 'account'; id: number | string; order: number };
+    
+    let relevantTiles: typeof tiles = [];
+    let relevantAccounts: typeof accounts = [];
+    
+    if (isAssetSection) {
+      // Assets section - only accounts with isAsset
+      relevantAccounts = accounts.filter(a => a.isAsset);
+    } else if (isLoanSection) {
+      // Loans section
+      relevantTiles = tiles.filter(t => t.hasBankAccount && t.bankIsLoan);
+      relevantAccounts = accounts.filter(a => a.isLoan);
+    } else {
+      // Bank accounts section
+      relevantTiles = tiles.filter(t => t.hasBankAccount && !t.bankIsLoan);
+      relevantAccounts = accounts.filter(a => !a.isLoan && !a.isAsset);
+    }
+    
+    console.log('Relevant tiles:', relevantTiles.length, 'Relevant accounts:', relevantAccounts.length);
+    
+    const unifiedList: UnifiedItem[] = [
+      ...relevantTiles.map(t => ({ type: 'tile' as const, id: t.id, order: t.bankAccountOrder ?? 0 })),
+      ...relevantAccounts.map(a => ({ type: 'account' as const, id: a.id, order: a.order ?? 0 })),
+    ].sort((a, b) => a.order - b.order);
+    
+    console.log('Unified list:', unifiedList);
+    
+    const oldIndex = unifiedList.findIndex(item => 
+      item.type === activeItem.type && String(item.id) === String(activeItem.id)
+    );
+    const newIndex = unifiedList.findIndex(item => 
+      item.type === overItem.type && String(item.id) === String(overItem.id)
+    );
+    
+    console.log('Indices - old:', oldIndex, 'new:', newIndex);
+    
+    if (oldIndex === -1 || newIndex === -1) {
+      console.log('Index not found, returning early');
+      return;
+    }
+    
+    const reordered = arrayMove(unifiedList, oldIndex, newIndex);
+    
+    // Update orders for ALL items in the reordered list
+    const tileUpdates: { [id: number]: number } = {};
+    const accountUpdates: { [id: string]: number } = {};
+    
+    reordered.forEach((item, idx) => {
+      if (item.type === 'tile') {
+        tileUpdates[item.id as number] = idx;
+      } else {
+        accountUpdates[item.id as string] = idx;
+      }
+    });
+    
+    console.log('Tile updates:', tileUpdates);
+    console.log('Account updates:', accountUpdates);
+    
+    // Apply updates
+    setTiles(prev => prev.map(t => {
+      if (tileUpdates[t.id] !== undefined) {
+        return { ...t, bankAccountOrder: tileUpdates[t.id] };
+      }
+      return t;
+    }));
+    
+    setAccounts(prev => prev.map(a => {
+      if (accountUpdates[a.id] !== undefined) {
+        return { ...a, order: accountUpdates[a.id] };
+      }
+      return a;
+    }));
+    
+    console.log('State updates applied');
+  };
+  
+  // SortableAccount component for drag-and-drop
+  function SortableAccountCard({ account, prefix }: { account: Account; prefix: string }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+      id: `${prefix}-${account.id}` 
+    });
+    
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+      zIndex: isDragging ? 100 : 1,
+    };
+    
+    const linkedTile = account.linkedTileId ? tiles.find(t => t.id === account.linkedTileId) : null;
+    const isLoan = account.isLoan;
+    
+    return (
+      <div
+        ref={setNodeRef}
+        style={{
+          ...style,
+          background: '#fff',
+          borderRadius: 12,
+          padding: 20,
+          boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.08)',
+          border: '1px solid #e0e0e0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'grab',
+        }}
+      >
+        {/* Drag handle */}
+        <div 
+          {...attributes} 
+          {...listeners}
+          style={{ 
+            cursor: 'grab', 
+            padding: '8px 12px 8px 0',
+            color: '#999',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="4" cy="4" r="1.5"/>
+            <circle cx="4" cy="8" r="1.5"/>
+            <circle cx="4" cy="12" r="1.5"/>
+            <circle cx="10" cy="4" r="1.5"/>
+            <circle cx="10" cy="8" r="1.5"/>
+            <circle cx="10" cy="12" r="1.5"/>
+          </svg>
+        </div>
+        
+        <div 
+          style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, cursor: 'pointer' }}
+          onClick={() => {
+            setEditingAccount(account);
+            setShowAccountModal(true);
+          }}
+        >
+          {linkedTile ? (
+            <img 
+              src={linkedTile.logo} 
+              alt={linkedTile.name}
+              style={{ 
+                width: 48, 
+                height: 48, 
+                borderRadius: 10,
+                objectFit: 'contain',
+                border: '1px solid #e0e0e0',
+              }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 48,
+              height: 48,
+              borderRadius: 10,
+              background: isLoan 
+                ? 'linear-gradient(135deg, #c62828 0%, #ef5350 100%)'
+                : 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 20,
+            }}>
+              {isLoan 
+                ? (account.accountType === 'Mortgage' ? '🏠' : 
+                   account.accountType === 'Auto Loan' ? '🚗' : 
+                   account.accountType === 'Student Loan' ? '🎓' : '💳')
+                : (account.accountType === 'Checking' ? '💵' : 
+                   account.accountType === 'Savings' ? '🐷' : 
+                   account.accountType === 'Money Market' ? '📈' : 
+                   account.accountType === 'CD' ? '📀' : '🏦')
+              }
+            </div>
+          )}
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 16, color: '#333' }}>{account.name}</div>
+            <div style={{ fontSize: 13, color: '#666' }}>
+              {account.bankName} • {account.accountType}
+              {!isLoan && ` • ****${account.accountNumber}`}
+              {isLoan && account.monthlyPayment && ` • $${account.monthlyPayment.toLocaleString()}/mo`}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: isLoan ? '#c62828' : '#2e7d32' }}>
+            ${account.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+          {!isLoan && account.interestRate && (
+            <div style={{ fontSize: 12, color: '#666' }}>{account.interestRate}% APY</div>
+          )}
+          {isLoan && (
+            <div style={{ fontSize: 12, color: '#666' }}>
+              {account.interestRate && `${account.interestRate}% APR`}
+              {account.paymentDueDay && ` • Due: ${account.paymentDueDay}${account.paymentDueDay === 1 ? 'st' : account.paymentDueDay === 2 ? 'nd' : account.paymentDueDay === 3 ? 'rd' : 'th'}`}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
+  // SortableTileBankAccountCard component for tiles with bank account info
+  function SortableTileBankAccountCard({ tile, prefix }: { tile: Tile; prefix: string }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+      id: `${prefix}-tile-${tile.id}` 
+    });
+    
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+      zIndex: isDragging ? 100 : 1,
+    };
+    
+    const isLoan = tile.bankIsLoan;
+    
+    return (
+      <div
+        ref={setNodeRef}
+        style={{
+          ...style,
+          background: '#fff',
+          borderRadius: 12,
+          padding: 20,
+          boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.08)',
+          border: isLoan ? '1px solid #ef9a9a' : '1px solid #90caf9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'grab',
+        }}
+      >
+        {/* Drag handle */}
+        <div 
+          {...attributes} 
+          {...listeners}
+          style={{ 
+            cursor: 'grab', 
+            padding: '8px 12px 8px 0',
+            color: '#999',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="4" cy="4" r="1.5"/>
+            <circle cx="4" cy="8" r="1.5"/>
+            <circle cx="4" cy="12" r="1.5"/>
+            <circle cx="10" cy="4" r="1.5"/>
+            <circle cx="10" cy="8" r="1.5"/>
+            <circle cx="10" cy="12" r="1.5"/>
+          </svg>
+        </div>
+        
+        <div 
+          style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, cursor: 'pointer' }}
+          onClick={() => handleEditTile(tile.id)}
+        >
+          <img 
+            src={tile.logo} 
+            alt={tile.name}
+            style={{ 
+              width: 48, 
+              height: 48, 
+              borderRadius: 10,
+              objectFit: 'contain',
+              border: '1px solid #e0e0e0',
+            }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect fill="${isLoan ? '%23c62828' : '%231976d2'}" width="48" height="48" rx="10"/><text x="24" y="32" text-anchor="middle" fill="white" font-size="24">${isLoan ? '📋' : '🏦'}</text></svg>`;
+            }}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 16, color: '#333' }}>{tile.name}</div>
+            <div style={{ fontSize: 13, color: '#666' }}>
+              {tile.bankAccountType || (isLoan ? 'Loan' : 'Account')}
+              {tile.bankAccountNumber && ` • ****${tile.bankAccountNumber}`}
+              {isLoan && tile.bankMonthlyPayment && ` • $${tile.bankMonthlyPayment.toLocaleString()}/mo`}
+            </div>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(tile.link, '_blank');
+            }}
+            style={{
+              background: isLoan ? '#c62828' : '#1976d2',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '6px 10px',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Login →
+          </button>
+        </div>
+        <div style={{ textAlign: 'right', marginLeft: 16 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: isLoan ? '#c62828' : '#2e7d32' }}>
+            ${(tile.bankBalance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+          {tile.bankInterestRate && (
+            <div style={{ fontSize: 12, color: '#666' }}>
+              {tile.bankInterestRate}% {isLoan ? 'APR' : 'APY'}
+            </div>
+          )}
+          {isLoan && tile.bankPaymentDueDay && (
+            <div style={{ fontSize: 12, color: '#666' }}>
+              Due: {tile.bankPaymentDueDay}{tile.bankPaymentDueDay === 1 ? 'st' : tile.bankPaymentDueDay === 2 ? 'nd' : tile.bankPaymentDueDay === 3 ? 'rd' : 'th'}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
+  // SortableAssetCard component for assets
+  function SortableAssetCard({ account }: { account: Account }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+      id: `asset-account-${account.id}` 
+    });
+    
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+      zIndex: isDragging ? 100 : 1,
+    };
+    
+    // Get emoji based on asset type
+    const getAssetEmoji = () => {
+      switch (account.accountType) {
+        case 'Real Estate': return '🏠';
+        case 'Business': return '🏢';
+        case 'Vehicle': return '🚗';
+        case 'Investment Property': return '🏘️';
+        case 'Collectibles': return '🎨';
+        case 'Equipment': return '⚙️';
+        default: return '💎';
+      }
+    };
+    
+    return (
+      <div
+        ref={setNodeRef}
+        style={{
+          ...style,
+          background: '#fff',
+          borderRadius: 12,
+          padding: 20,
+          boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.08)',
+          border: '1px solid #ffcc80',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'grab',
+        }}
+      >
+        {/* Drag handle */}
+        <div 
+          {...attributes} 
+          {...listeners}
+          style={{ 
+            cursor: 'grab', 
+            padding: '8px 12px 8px 0',
+            color: '#999',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="4" cy="4" r="1.5"/>
+            <circle cx="4" cy="8" r="1.5"/>
+            <circle cx="4" cy="12" r="1.5"/>
+            <circle cx="10" cy="4" r="1.5"/>
+            <circle cx="10" cy="8" r="1.5"/>
+            <circle cx="10" cy="12" r="1.5"/>
+          </svg>
+        </div>
+        
+        <div 
+          style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, cursor: 'pointer' }}
+          onClick={() => {
+            setEditingAccount(account);
+            setShowAccountModal(true);
+          }}
+        >
+          <div style={{
+            width: 48,
+            height: 48,
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #e65100 0%, #ff9800 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 24,
+          }}>
+            {getAssetEmoji()}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 16, color: '#333' }}>{account.name}</div>
+            <div style={{ fontSize: 13, color: '#666' }}>
+              {account.accountType}
+              {account.address && ` • ${account.address}`}
+              {account.purchaseDate && ` • Purchased ${account.purchaseDate}`}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#e65100' }}>
+            ${account.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+          {account.purchasePrice && (
+            <div style={{ fontSize: 12, color: '#666' }}>
+              Purchased: ${account.purchasePrice.toLocaleString()}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   
   // --- Budget Categories state (now stored per-tab, this is for backwards compatibility) ---
   const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>(() => {
@@ -2418,6 +3021,16 @@ function App() {
     homePageTabId: null,
     // Main Tab assignment (Home Apps, Business Apps, etc.)
     mainTabId: null,
+    // Bank Account fields
+    hasBankAccount: false,
+    bankAccountType: null,
+    bankAccountNumber: null,
+    bankRoutingNumber: null,
+    bankBalance: null,
+    bankInterestRate: null,
+    bankMonthlyPayment: null,
+    bankPaymentDueDay: null,
+    bankIsLoan: false,
   });
   const [editTileId, setEditTileId] = useState<number | null>(null);
   const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
@@ -2841,6 +3454,16 @@ function App() {
       homePageTabId: tile.homePageTabId || null,
       // Main Tab assignment (Home Apps, Business Apps)
       mainTabId: tile.mainTabId || 'home',
+      // Bank Account fields
+      hasBankAccount: tile.hasBankAccount || false,
+      bankAccountType: tile.bankAccountType || null,
+      bankAccountNumber: tile.bankAccountNumber || null,
+      bankRoutingNumber: tile.bankRoutingNumber || null,
+      bankBalance: tile.bankBalance || null,
+      bankInterestRate: tile.bankInterestRate || null,
+      bankMonthlyPayment: tile.bankMonthlyPayment || null,
+      bankPaymentDueDay: tile.bankPaymentDueDay || null,
+      bankIsLoan: tile.bankIsLoan || false,
     });
   };
   const handleDeleteTile = (tileId: number) => {
@@ -3487,6 +4110,7 @@ function App() {
       financeTiles: localStorage.getItem('financeTiles') ? JSON.parse(localStorage.getItem('financeTiles')!) : [],
       homePageTabs: localStorage.getItem('homePageTabs') ? JSON.parse(localStorage.getItem('homePageTabs')!) : [],
       creditCards: localStorage.getItem('creditCards') ? JSON.parse(localStorage.getItem('creditCards')!) : [],
+      accounts: localStorage.getItem('accounts') ? JSON.parse(localStorage.getItem('accounts')!) : [],
       stockSymbols: localStorage.getItem('stockSymbols') ? JSON.parse(localStorage.getItem('stockSymbols')!) : [],
       expandedHomePageTabs: localStorage.getItem('expandedHomePageTabs') ? JSON.parse(localStorage.getItem('expandedHomePageTabs')!) : [],
       pickedFolders: localStorage.getItem('pickedFolders') ? JSON.parse(localStorage.getItem('pickedFolders')!) : [],
@@ -3557,6 +4181,10 @@ function App() {
         if (restoreData.creditCards) {
           localStorage.setItem('creditCards', JSON.stringify(restoreData.creditCards));
           setCreditCards(restoreData.creditCards);
+        }
+        if (restoreData.accounts) {
+          localStorage.setItem('accounts', JSON.stringify(restoreData.accounts));
+          setAccounts(restoreData.accounts);
         }
         if (restoreData.stockSymbols) {
           localStorage.setItem('stockSymbols', JSON.stringify(restoreData.stockSymbols));
@@ -4630,6 +5258,25 @@ function App() {
                     }}
                   >
                     📅 Calendar Budget
+                  </button>
+                  <button
+                    onClick={() => setHomePageView('accounts')}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: 6,
+                      background: homePageView === 'accounts' ? '#1976d2' : 'transparent',
+                      color: homePageView === 'accounts' ? '#fff' : '#666',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    🏦 Accounts
                   </button>
                 </div>
               </div>
@@ -7475,8 +8122,754 @@ function App() {
                 </div>
               </Modal>
             )}
-          </div>
-        )}
+              </div>
+            )}
+
+            {/* Accounts View */}
+            {homePageView === 'accounts' && (
+              <div style={{ marginTop: 0, paddingLeft: 24, paddingRight: 24 }}>
+                {/* Tab indicator for Accounts */}
+                <div style={{ 
+                  marginBottom: 16, 
+                  padding: '10px 16px', 
+                  background: '#e8f5e9', 
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <span style={{ fontWeight: 600, color: '#2e7d32' }}>
+                    🏦 Bank Accounts & Loans
+                  </span>
+                  <span style={{ fontSize: 12, color: '#666' }}>
+                    Manage your financial accounts
+                  </span>
+                </div>
+
+                {/* Banking & Finance Tiles Section - Only show tiles without account info */}
+                {(() => {
+                  const tilesWithoutAccounts = tiles.filter(t => t.budgetCategory === 'finance' && !t.hasBankAccount);
+                  
+                  if (tilesWithoutAccounts.length > 0) {
+                    return (
+                      <div style={{ marginBottom: 24 }}>
+                        {/* Tiles WITHOUT Bank Account Info - Show as compact icons */}
+                        {tilesWithoutAccounts.length > 0 && (
+                          <>
+                            <h3 style={{ 
+                              fontSize: 14, 
+                              fontWeight: 600, 
+                              color: '#666', 
+                              marginBottom: 10,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                            }}>
+                              🔗 Other Banking Apps <span style={{ fontWeight: 400, fontSize: 12 }}>(click to add account info)</span>
+                            </h3>
+                            <div style={{ 
+                              display: 'flex', 
+                              flexWrap: 'wrap', 
+                              gap: 10,
+                              padding: 12,
+                              background: '#f8f9fa',
+                              borderRadius: 10,
+                              border: '1px solid #e0e0e0',
+                              marginBottom: 16,
+                            }}>
+                              {tilesWithoutAccounts.map(tile => (
+                                <div
+                                  key={tile.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '8px 12px',
+                                    background: '#fff',
+                                    borderRadius: 8,
+                                    border: '1px solid #e0e0e0',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.12)';
+                                    e.currentTarget.style.borderColor = '#1976d2';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = 'none';
+                                    e.currentTarget.style.borderColor = '#e0e0e0';
+                                  }}
+                                  onClick={() => handleEditTile(tile.id)}
+                                  title={`Click to add account info to ${tile.name}`}
+                                >
+                                  <img 
+                                    src={tile.logo} 
+                                    alt={tile.name}
+                                    style={{ 
+                                      width: 28, 
+                                      height: 28, 
+                                      borderRadius: 6,
+                                      objectFit: 'contain',
+                                    }}
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect fill="%231976d2" width="28" height="28" rx="6"/><text x="14" y="18" text-anchor="middle" fill="white" font-size="14">🏦</text></svg>';
+                                    }}
+                                  />
+                                  <span style={{ 
+                                    fontSize: 12, 
+                                    fontWeight: 500, 
+                                    color: '#333',
+                                  }}>
+                                    {tile.name}
+                                  </span>
+                                  <span style={{
+                                    fontSize: 10,
+                                    color: '#999',
+                                    background: '#f0f0f0',
+                                    padding: '2px 6px',
+                                    borderRadius: 4,
+                                  }}>
+                                    + Add
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Add Account Button */}
+                <div style={{ marginBottom: 24 }}>
+                  <button
+                    onClick={() => {
+                      setEditingAccount(null);
+                      setShowAccountModal(true);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '12px 24px',
+                      background: 'linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(46, 125, 50, 0.3)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(46, 125, 50, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(46, 125, 50, 0.3)';
+                    }}
+                  >
+                    ➕ Add Account, Loan, or Asset
+                  </button>
+                </div>
+
+                {/* Summary Cards */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                  gap: 16, 
+                  marginBottom: 24 
+                }}>
+                  {(() => {
+                    // Calculate totals from both Account entities AND tile bank accounts
+                    const bankAccounts = accounts.filter(a => !a.isLoan && !a.isAsset).reduce((sum, a) => sum + a.currentBalance, 0);
+                    const accountLoans = accounts.filter(a => a.isLoan).reduce((sum, a) => sum + a.currentBalance, 0);
+                    const accountAssets = accounts.filter(a => a.isAsset).reduce((sum, a) => sum + a.currentBalance, 0);
+                    const tileAssets = tiles.filter(t => t.hasBankAccount && !t.bankIsLoan).reduce((sum, t) => sum + (t.bankBalance || 0), 0);
+                    const tileLoans = tiles.filter(t => t.hasBankAccount && t.bankIsLoan).reduce((sum, t) => sum + (t.bankBalance || 0), 0);
+                    const totalBankAccounts = bankAccounts + tileAssets;
+                    const totalLoans = accountLoans + tileLoans;
+                    const totalAssets = accountAssets;
+                    const netWorth = totalBankAccounts + totalAssets - totalLoans;
+                    
+                    return (
+                      <>
+                        <div style={{
+                          background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                          borderRadius: 12,
+                          padding: 20,
+                          border: '1px solid #90caf9',
+                        }}>
+                          <div style={{ fontSize: 13, color: '#1565c0', fontWeight: 500, marginBottom: 4 }}>💳 Bank Accounts</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#0d47a1' }}>
+                            ${totalBankAccounts.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div style={{
+                          background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
+                          borderRadius: 12,
+                          padding: 20,
+                          border: '1px solid #ffcc80',
+                        }}>
+                          <div style={{ fontSize: 13, color: '#e65100', fontWeight: 500, marginBottom: 4 }}>🏠 Assets</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#bf360c' }}>
+                            ${totalAssets.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div style={{
+                          background: 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)',
+                          borderRadius: 12,
+                          padding: 20,
+                          border: '1px solid #ef9a9a',
+                        }}>
+                          <div style={{ fontSize: 13, color: '#c62828', fontWeight: 500, marginBottom: 4 }}>📋 Loans</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#b71c1c' }}>
+                            ${totalLoans.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div style={{
+                          background: 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)',
+                          borderRadius: 12,
+                          padding: 20,
+                          border: '1px solid #a5d6a7',
+                        }}>
+                          <div style={{ fontSize: 13, color: '#2e7d32', fontWeight: 500, marginBottom: 4 }}>💰 Net Worth</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#1b5e20' }}>
+                            ${netWorth.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* Bank Accounts Section - includes Account entities AND tiles with bank accounts */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ 
+                    fontSize: 18, 
+                    fontWeight: 600, 
+                    color: '#1976d2', 
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    💳 Bank Accounts
+                  </h3>
+                  {(() => {
+                    const bankAccountsList = accounts.filter(a => !a.isLoan && !a.isAsset);
+                    const tileBankAccounts = tiles.filter(t => t.hasBankAccount && !t.bankIsLoan);
+                    const hasAny = bankAccountsList.length > 0 || tileBankAccounts.length > 0;
+                    
+                    if (!hasAny) {
+                      return (
+                        <div style={{
+                          padding: 32,
+                          textAlign: 'center',
+                          background: '#f5f5f5',
+                          borderRadius: 12,
+                          color: '#666',
+                        }}>
+                          No bank accounts added yet. Click "Add Account or Loan" or add account info to a Banking tile.
+                        </div>
+                      );
+                    }
+                    
+                    // Build unified sorted list of tiles and accounts
+                    type UnifiedBankItem = 
+                      | { type: 'tile'; data: Tile; order: number }
+                      | { type: 'account'; data: Account; order: number };
+                    
+                    const unifiedList: UnifiedBankItem[] = [
+                      ...tileBankAccounts.map(t => ({ type: 'tile' as const, data: t, order: t.bankAccountOrder ?? 0 })),
+                      ...bankAccountsList.map(a => ({ type: 'account' as const, data: a, order: a.order ?? 0 })),
+                    ].sort((a, b) => a.order - b.order);
+                    
+                    const sortableIds = unifiedList.map(item => 
+                      item.type === 'tile' ? `bank-tile-${item.data.id}` : `bank-account-${item.data.id}`
+                    );
+                    
+                    return (
+                      <DndContext 
+                        sensors={sensors}
+                        collisionDetection={closestCenter} 
+                        onDragEnd={handleAccountDragEnd}
+                      >
+                        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {unifiedList.map(item => 
+                              item.type === 'tile' ? (
+                                <SortableTileBankAccountCard key={`tile-${item.data.id}`} tile={item.data} prefix="bank" />
+                              ) : (
+                                <SortableAccountCard key={`account-${item.data.id}`} account={item.data} prefix="bank-account" />
+                              )
+                            )}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    );
+                  })()}
+                </div>
+
+                {/* Loans Section - includes Account entities AND tiles with loan info */}
+                <div>
+                  <h3 style={{ 
+                    fontSize: 18, 
+                    fontWeight: 600, 
+                    color: '#c62828', 
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    📋 Loans & Mortgages
+                  </h3>
+                  {(() => {
+                    const loansList = accounts.filter(a => a.isLoan);
+                    const tileLoans = tiles.filter(t => t.hasBankAccount && t.bankIsLoan);
+                    const hasAny = loansList.length > 0 || tileLoans.length > 0;
+                    
+                    if (!hasAny) {
+                      return (
+                        <div style={{
+                          padding: 32,
+                          textAlign: 'center',
+                          background: '#f5f5f5',
+                          borderRadius: 12,
+                          color: '#666',
+                        }}>
+                          No loans added yet. Click "Add Account or Loan" or add loan info to a Banking tile.
+                        </div>
+                      );
+                    }
+                    
+                    // Build unified sorted list of tiles and accounts
+                    type UnifiedLoanItem = 
+                      | { type: 'tile'; data: Tile; order: number }
+                      | { type: 'account'; data: Account; order: number };
+                    
+                    const unifiedList: UnifiedLoanItem[] = [
+                      ...tileLoans.map(t => ({ type: 'tile' as const, data: t, order: t.bankAccountOrder ?? 0 })),
+                      ...loansList.map(a => ({ type: 'account' as const, data: a, order: a.order ?? 0 })),
+                    ].sort((a, b) => a.order - b.order);
+                    
+                    const sortableIds = unifiedList.map(item => 
+                      item.type === 'tile' ? `loan-tile-${item.data.id}` : `loan-account-${item.data.id}`
+                    );
+                    
+                    return (
+                      <DndContext 
+                        sensors={sensors}
+                        collisionDetection={closestCenter} 
+                        onDragEnd={handleAccountDragEnd}
+                      >
+                        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {unifiedList.map(item => 
+                              item.type === 'tile' ? (
+                                <SortableTileBankAccountCard key={`tile-${item.data.id}`} tile={item.data} prefix="loan" />
+                              ) : (
+                                <SortableAccountCard key={`account-${item.data.id}`} account={item.data} prefix="loan-account" />
+                              )
+                            )}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    );
+                  })()}
+                </div>
+
+                {/* Assets Section */}
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ 
+                    fontSize: 18, 
+                    fontWeight: 600, 
+                    color: '#e65100', 
+                    marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}>
+                    🏠 Assets
+                  </h3>
+                  {(() => {
+                    const assetsList = accounts.filter(a => a.isAsset);
+                    
+                    if (assetsList.length === 0) {
+                      return (
+                        <div style={{
+                          padding: 32,
+                          textAlign: 'center',
+                          background: '#f5f5f5',
+                          borderRadius: 12,
+                          color: '#666',
+                        }}>
+                          No assets added yet. Click "Add Account or Loan" and select "Asset" to add your house, business, or other valuable assets.
+                        </div>
+                      );
+                    }
+                    
+                    // Build sorted list of assets
+                    const sortedAssets = [...assetsList].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    const sortableIds = sortedAssets.map(a => `asset-account-${a.id}`);
+                    
+                    return (
+                      <DndContext 
+                        sensors={sensors}
+                        collisionDetection={closestCenter} 
+                        onDragEnd={handleAccountDragEnd}
+                      >
+                        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {sortedAssets.map(account => (
+                              <SortableAssetCard key={account.id} account={account} />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    );
+                  })()}
+                </div>
+
+                {/* Account Modal */}
+                {showAccountModal && (
+                  <Modal onClose={() => { setShowAccountModal(false); setEditingAccount(null); }}>
+                    <h2 style={{ marginBottom: 20, color: '#333' }}>
+                      {editingAccount ? 'Edit Account' : 'Add Account, Loan, or Asset'}
+                    </h2>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const form = e.target as HTMLFormElement;
+                        const formData = new FormData(form);
+                        const accountType = formData.get('accountType') as string;
+                        const isLoan = accountType === 'Mortgage' || 
+                                       accountType === 'Auto Loan' || 
+                                       accountType === 'Personal Loan' || 
+                                       accountType === 'Student Loan' || 
+                                       accountType === 'Credit Line';
+                        const isAsset = accountType === 'Real Estate' ||
+                                        accountType === 'Business' ||
+                                        accountType === 'Vehicle' ||
+                                        accountType === 'Investment Property' ||
+                                        accountType === 'Collectibles' ||
+                                        accountType === 'Equipment' ||
+                                        accountType === 'Other Asset';
+                        
+                        const linkedTileIdStr = formData.get('linkedTileId') as string;
+                        const newAccount: Account = {
+                          id: editingAccount?.id || Date.now().toString(),
+                          name: formData.get('name') as string,
+                          bankName: isAsset ? (formData.get('address') as string || formData.get('bankName') as string) : (formData.get('bankName') as string),
+                          accountType: accountType as AccountType | AssetType,
+                          accountNumber: formData.get('accountNumber') as string,
+                          routingNumber: formData.get('routingNumber') as string || undefined,
+                          currentBalance: parseFloat(formData.get('currentBalance') as string) || 0,
+                          interestRate: parseFloat(formData.get('interestRate') as string) || undefined,
+                          creditLimit: parseFloat(formData.get('creditLimit') as string) || undefined,
+                          monthlyPayment: parseFloat(formData.get('monthlyPayment') as string) || undefined,
+                          paymentDueDay: parseInt(formData.get('paymentDueDay') as string) || undefined,
+                          maturityDate: formData.get('maturityDate') as string || undefined,
+                          notes: formData.get('notes') as string || undefined,
+                          isLoan,
+                          isAsset,
+                          link: formData.get('link') as string || undefined,
+                          dateOpened: formData.get('dateOpened') as string || undefined,
+                          linkedTileId: linkedTileIdStr ? parseInt(linkedTileIdStr) : undefined,
+                          // Asset-specific fields
+                          purchasePrice: isAsset ? (parseFloat(formData.get('purchasePrice') as string) || undefined) : undefined,
+                          purchaseDate: isAsset ? (formData.get('purchaseDate') as string || undefined) : undefined,
+                          address: isAsset ? (formData.get('address') as string || undefined) : undefined,
+                        };
+                        
+                        if (editingAccount) {
+                          setAccounts(accounts.map(a => a.id === editingAccount.id ? newAccount : a));
+                        } else {
+                          setAccounts([...accounts, newAccount]);
+                        }
+                        setShowAccountModal(false);
+                        setEditingAccount(null);
+                      }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+                    >
+                      {/* Link to Banking & Finance Tile */}
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontWeight: 500, fontSize: 13 }}>🔗 Link to Banking App (optional)</span>
+                        <select
+                          name="linkedTileId"
+                          defaultValue={editingAccount?.linkedTileId?.toString() || ''}
+                          style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                        >
+                          <option value="">-- None --</option>
+                          {tiles.filter(t => t.budgetCategory === 'finance').map(tile => (
+                            <option key={tile.id} value={tile.id}>{tile.name}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Account Name *</span>
+                          <input
+                            name="name"
+                            defaultValue={editingAccount?.name || ''}
+                            required
+                            placeholder="e.g., Primary Checking"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Bank/Lender/Description *</span>
+                          <input
+                            name="bankName"
+                            defaultValue={editingAccount?.bankName || ''}
+                            required
+                            placeholder="e.g., Chase Bank or 123 Main St"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Account Type *</span>
+                          <select
+                            name="accountType"
+                            defaultValue={editingAccount?.accountType || 'Checking'}
+                            required
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          >
+                            <optgroup label="💳 Bank Accounts">
+                              <option value="Checking">Checking</option>
+                              <option value="Savings">Savings</option>
+                              <option value="Money Market">Money Market</option>
+                              <option value="CD">Certificate of Deposit (CD)</option>
+                            </optgroup>
+                            <optgroup label="📋 Loans">
+                              <option value="Mortgage">Mortgage</option>
+                              <option value="Auto Loan">Auto Loan</option>
+                              <option value="Personal Loan">Personal Loan</option>
+                              <option value="Student Loan">Student Loan</option>
+                              <option value="Credit Line">Credit Line / HELOC</option>
+                            </optgroup>
+                            <optgroup label="🏠 Assets">
+                              <option value="Real Estate">Real Estate (House/Property)</option>
+                              <option value="Business">Business</option>
+                              <option value="Vehicle">Vehicle</option>
+                              <option value="Investment Property">Investment Property</option>
+                              <option value="Collectibles">Collectibles</option>
+                              <option value="Equipment">Equipment</option>
+                              <option value="Other Asset">Other Asset</option>
+                            </optgroup>
+                            <option value="Other">Other</option>
+                          </select>
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Current Balance *</span>
+                          <input
+                            name="currentBalance"
+                            type="number"
+                            step="0.01"
+                            defaultValue={editingAccount?.currentBalance || ''}
+                            required
+                            placeholder="0.00"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Account # (last 4)</span>
+                          <input
+                            name="accountNumber"
+                            defaultValue={editingAccount?.accountNumber || ''}
+                            maxLength={4}
+                            placeholder="1234"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Routing # (last 4)</span>
+                          <input
+                            name="routingNumber"
+                            defaultValue={editingAccount?.routingNumber || ''}
+                            maxLength={4}
+                            placeholder="5678"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Interest Rate %</span>
+                          <input
+                            name="interestRate"
+                            type="number"
+                            step="0.01"
+                            defaultValue={editingAccount?.interestRate || ''}
+                            placeholder="4.50"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Monthly Payment</span>
+                          <input
+                            name="monthlyPayment"
+                            type="number"
+                            step="0.01"
+                            defaultValue={editingAccount?.monthlyPayment || ''}
+                            placeholder="500.00"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>Due Day (1-31)</span>
+                          <input
+                            name="paymentDueDay"
+                            type="number"
+                            min="1"
+                            max="31"
+                            defaultValue={editingAccount?.paymentDueDay || ''}
+                            placeholder="15"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                      </div>
+                      
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontWeight: 500, fontSize: 13 }}>Online Banking Link</span>
+                        <input
+                          name="link"
+                          type="url"
+                          defaultValue={editingAccount?.link || ''}
+                          placeholder="https://www.chase.com/login"
+                          style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                        />
+                      </label>
+                      
+                      {/* Asset-specific fields */}
+                      <div style={{ 
+                        display: editingAccount?.isAsset || ['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(editingAccount?.accountType || '') ? 'grid' : 'none', 
+                        gridTemplateColumns: '1fr 1fr', 
+                        gap: 16,
+                        padding: 16,
+                        background: '#fff3e0',
+                        borderRadius: 8,
+                        border: '1px solid #ffcc80',
+                      }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>🏠 Address/Location</span>
+                          <input
+                            name="address"
+                            defaultValue={editingAccount?.address || ''}
+                            placeholder="e.g., 123 Main St, City, ST"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>💰 Purchase Price</span>
+                          <input
+                            name="purchasePrice"
+                            type="number"
+                            step="0.01"
+                            defaultValue={editingAccount?.purchasePrice || ''}
+                            placeholder="Original purchase price"
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: 'span 2' }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>📅 Purchase Date</span>
+                          <input
+                            name="purchaseDate"
+                            type="date"
+                            defaultValue={editingAccount?.purchaseDate || ''}
+                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                          />
+                        </label>
+                      </div>
+
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontWeight: 500, fontSize: 13 }}>Notes</span>
+                        <textarea
+                          name="notes"
+                          defaultValue={editingAccount?.notes || ''}
+                          placeholder="Any additional notes..."
+                          rows={2}
+                          style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14, resize: 'vertical' }}
+                        />
+                      </label>
+                      
+                      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                        <button
+                          type="submit"
+                          style={{
+                            flex: 1,
+                            padding: '12px 24px',
+                            background: '#2e7d32',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 6,
+                            fontSize: 15,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {editingAccount ? 'Save Changes' : 'Add Account'}
+                        </button>
+                        {editingAccount && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm('Are you sure you want to delete this account?')) {
+                                setAccounts(accounts.filter(a => a.id !== editingAccount.id));
+                                setShowAccountModal(false);
+                                setEditingAccount(null);
+                              }
+                            }}
+                            style={{
+                              padding: '12px 24px',
+                              background: '#ffebee',
+                              color: '#c62828',
+                              border: '1px solid #ef9a9a',
+                              borderRadius: 6,
+                              fontSize: 15,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setShowAccountModal(false); setEditingAccount(null); }}
+                          style={{
+                            padding: '12px 24px',
+                            background: '#f5f5f5',
+                            color: '#666',
+                            border: '1px solid #ddd',
+                            borderRadius: 6,
+                            fontSize: 15,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </Modal>
+                )}
+              </div>
+            )}
         {/* FILES PAGE */}
         {mainMenu === 'files' && (
           <div style={{ padding: '32px 24px', maxWidth: 1400, margin: '0 auto' }}>
@@ -9233,6 +10626,144 @@ function App() {
                   </>
                 )}
               </div>
+              
+              {/* Bank Account Section - Only show for Banking & Finance category */}
+              {form.budgetCategory === 'finance' && (
+                <div style={{ 
+                  marginTop: 20, 
+                  padding: 16, 
+                  background: '#e3f2fd', 
+                  borderRadius: 8, 
+                  border: '1px solid #90caf9' 
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={form.hasBankAccount || false}
+                      onChange={e => setForm(f => ({ ...f, hasBankAccount: e.target.checked }))}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <span style={{ fontWeight: 600, color: '#1565c0' }}>🏦 Add Bank Account Information</span>
+                  </label>
+                  
+                  {form.hasBankAccount && (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                        <label style={{ display: 'block' }}>
+                          Account Type:<br />
+                          <select
+                            value={form.bankAccountType || ''}
+                            onChange={e => {
+                              const type = e.target.value as any || null;
+                              const isLoan = ['Mortgage', 'Auto Loan', 'Personal Loan', 'Student Loan', 'Credit Line', 'Other'].includes(type);
+                              setForm(f => ({ ...f, bankAccountType: type, bankIsLoan: isLoan }));
+                            }}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                          >
+                            <option value="">-- Select Type --</option>
+                            <optgroup label="Bank Accounts">
+                              <option value="Checking">Checking</option>
+                              <option value="Savings">Savings</option>
+                              <option value="Money Market">Money Market</option>
+                              <option value="CD">Certificate of Deposit</option>
+                            </optgroup>
+                            <optgroup label="Loans">
+                              <option value="Mortgage">Mortgage</option>
+                              <option value="Auto Loan">Auto Loan</option>
+                              <option value="Personal Loan">Personal Loan</option>
+                              <option value="Student Loan">Student Loan</option>
+                              <option value="Credit Line">Credit Line / HELOC</option>
+                              <option value="Other">Other</option>
+                            </optgroup>
+                          </select>
+                        </label>
+                        
+                        <label style={{ display: 'block' }}>
+                          {form.bankIsLoan ? 'Loan Balance:' : 'Account Balance:'}<br />
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={form.bankBalance ?? ''}
+                            onChange={e => setForm(f => ({ ...f, bankBalance: e.target.value ? parseFloat(e.target.value) : null }))}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                            placeholder="0.00"
+                          />
+                        </label>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                        <label style={{ display: 'block' }}>
+                          Account # (last 4):<br />
+                          <input
+                            type="text"
+                            maxLength={4}
+                            value={form.bankAccountNumber ?? ''}
+                            onChange={e => setForm(f => ({ ...f, bankAccountNumber: e.target.value }))}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                            placeholder="1234"
+                          />
+                        </label>
+                        
+                        <label style={{ display: 'block' }}>
+                          Routing # (last 4):<br />
+                          <input
+                            type="text"
+                            maxLength={4}
+                            value={form.bankRoutingNumber ?? ''}
+                            onChange={e => setForm(f => ({ ...f, bankRoutingNumber: e.target.value }))}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                            placeholder="5678"
+                          />
+                        </label>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+                        <label style={{ display: 'block' }}>
+                          {form.bankIsLoan ? 'Interest Rate (APR):' : 'Interest Rate (APY):'}<br />
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={form.bankInterestRate ?? ''}
+                            onChange={e => setForm(f => ({ ...f, bankInterestRate: e.target.value ? parseFloat(e.target.value) : null }))}
+                            style={{ width: '100%', padding: 8, marginTop: 4 }}
+                            placeholder="4.50"
+                          />
+                        </label>
+                        
+                        {form.bankIsLoan && (
+                          <>
+                            <label style={{ display: 'block' }}>
+                              Monthly Payment:<br />
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={form.bankMonthlyPayment ?? ''}
+                                onChange={e => setForm(f => ({ ...f, bankMonthlyPayment: e.target.value ? parseFloat(e.target.value) : null }))}
+                                style={{ width: '100%', padding: 8, marginTop: 4 }}
+                                placeholder="500.00"
+                              />
+                            </label>
+                            
+                            <label style={{ display: 'block' }}>
+                              Due Day (1-31):<br />
+                              <input
+                                type="number"
+                                min="1"
+                                max="31"
+                                value={form.bankPaymentDueDay ?? ''}
+                                onChange={e => setForm(f => ({ ...f, bankPaymentDueDay: e.target.value ? parseInt(e.target.value) : null }))}
+                                style={{ width: '100%', padding: 8, marginTop: 4 }}
+                                placeholder="15"
+                              />
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              
               <label style={{ display: 'block', marginTop: 12 }}>
                 Notes:<br />
                 <textarea

@@ -288,8 +288,10 @@ body {
   border-radius: 16px;
   box-shadow: 0 2px 24px #0003;
   padding: 32px 24px;
-  max-width: 400px;
-  width: 100%;
+  max-width: 600px;
+  width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
   text-align: left;
   position: relative;
   z-index: 1001;
