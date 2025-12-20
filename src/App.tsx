@@ -1469,6 +1469,16 @@ function App() {
     localStorage.setItem('selectedMainTab', selectedMainTab);
   }, [selectedMainTab]);
   
+  // Hide empty categories toggle
+  const [hideEmptyCategories, setHideEmptyCategories] = useState<boolean>(() => {
+    const saved = localStorage.getItem('hideEmptyCategories');
+    return saved === 'true';
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('hideEmptyCategories', hideEmptyCategories.toString());
+  }, [hideEmptyCategories]);
+  
   // Get budget categories for the currently selected main tab
   const currentTabBudgetCategories = React.useMemo(() => {
     const tab = tabs.find(t => t.id === selectedMainTab);
@@ -5527,6 +5537,37 @@ function App() {
                   {tab.name}
                 </button>
               ))}
+              
+              {/* Show/Hide Empty Categories Toggle */}
+              <button
+                onClick={() => setHideEmptyCategories(!hideEmptyCategories)}
+                style={{
+                  marginLeft: 'auto',
+                  padding: '8px 16px',
+                  background: hideEmptyCategories ? '#e3f2fd' : 'transparent',
+                  color: hideEmptyCategories ? '#1976d2' : '#888',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 20,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  whiteSpace: 'nowrap',
+                  marginBottom: 4,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = hideEmptyCategories ? '#bbdefb' : '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = hideEmptyCategories ? '#e3f2fd' : 'transparent';
+                }}
+                title={hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'}
+              >
+                {hideEmptyCategories ? '👁️ Show Empty' : '👁️‍🗨️ Hide Empty'}
+              </button>
             </div>
             
             {/* Two Column Layout: Main Content + Sidebar */}
@@ -5562,9 +5603,18 @@ function App() {
                   } else if (activeCardId || hasUncategorizedCards) {
                     categoriesToShow = currentTabBudgetCategories.filter(cat => !cat.id.includes('cancelled')); // Show all except cancelled when dragging
                   } else {
-                    // Always show ALL categories for the tab (even empty ones)
-                    // This ensures empty categories remain visible after adding cards
-                    categoriesToShow = currentTabBudgetCategories.filter(cat => !cat.id.includes('cancelled'));
+                    // Filter categories based on hideEmptyCategories setting
+                    categoriesToShow = currentTabBudgetCategories.filter(cat => {
+                      if (cat.id.includes('cancelled')) return false;
+                      
+                      // If hideEmptyCategories is enabled, only show categories with cards
+                      if (hideEmptyCategories) {
+                        const categoryHasCards = mainTabTiles.some(t => t.budgetCategory === cat.id);
+                        return categoryHasCards;
+                      }
+                      
+                      return true; // Show all categories when not hiding empty
+                    });
                   }
                   
                   // Also check for uncategorized cards (cards without budgetCategory) - only show when viewing all
