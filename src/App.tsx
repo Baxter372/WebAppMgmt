@@ -1333,7 +1333,7 @@ function App() {
           borderRadius: 12,
           padding: 20,
           boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.08)',
-          border: '1px solid #ffcc80',
+          border: '1px solid #80deea',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1373,7 +1373,7 @@ function App() {
             width: 48,
             height: 48,
             borderRadius: 10,
-            background: 'linear-gradient(135deg, #e65100 0%, #ff9800 100%)',
+            background: 'linear-gradient(135deg, #00838f 0%, #26c6da 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1391,7 +1391,7 @@ function App() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#e65100' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#00838f' }}>
             ${account.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           {account.purchasePrice && (
@@ -8312,13 +8312,13 @@ function App() {
                           </div>
                         </div>
                         <div style={{
-                          background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
+                          background: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%)',
                           borderRadius: 12,
                           padding: 20,
-                          border: '1px solid #ffcc80',
+                          border: '1px solid #80deea',
                         }}>
-                          <div style={{ fontSize: 13, color: '#e65100', fontWeight: 500, marginBottom: 4 }}>🏠 Assets</div>
-                          <div style={{ fontSize: 28, fontWeight: 700, color: '#bf360c' }}>
+                          <div style={{ fontSize: 13, color: '#00838f', fontWeight: 500, marginBottom: 4 }}>🏠 Assets</div>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#006064' }}>
                             ${totalAssets.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </div>
                         </div>
@@ -8490,7 +8490,7 @@ function App() {
                   <h3 style={{ 
                     fontSize: 18, 
                     fontWeight: 600, 
-                    color: '#e65100', 
+                    color: '#00838f', 
                     marginBottom: 16,
                     display: 'flex',
                     alignItems: 'center',
