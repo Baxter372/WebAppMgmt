@@ -872,6 +872,29 @@ function App() {
         if (data.lastPaymentsReminderShown) {
           localStorage.setItem('lastPaymentsReminderShown', data.lastPaymentsReminderShown);
         }
+        // Restore additional settings and data
+        if (data.budgetCategories) {
+          localStorage.setItem('budgetCategories', JSON.stringify(data.budgetCategories));
+        }
+        if (data.activeSessions) {
+          localStorage.setItem('activeSessions', JSON.stringify(data.activeSessions));
+        }
+        if (data.receiptFiles) {
+          localStorage.setItem('receiptFiles', JSON.stringify(data.receiptFiles));
+        }
+        // Restore UI preferences
+        if (data.selectedMainTab) {
+          localStorage.setItem('selectedMainTab', data.selectedMainTab);
+        }
+        if (data.hideEmptyCategories !== undefined) {
+          localStorage.setItem('hideEmptyCategories', data.hideEmptyCategories.toString());
+        }
+        if (data.categoriesExpanded) {
+          localStorage.setItem('categoriesExpanded', JSON.stringify(data.categoriesExpanded));
+        }
+        if (data.sidebarWidth) {
+          localStorage.setItem('sidebarWidth', String(data.sidebarWidth));
+        }
         
         // Mark this backup as restored
         localStorage.setItem('lastAutoRestoreDate', backupDate);
@@ -928,8 +951,18 @@ function App() {
   
   // Handle account reordering via drag and drop (supports tiles, accounts, and assets)
   const handleAccountDragEnd = (event: any) => {
+    console.log('=== handleAccountDragEnd called ===');
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    console.log('active.id:', active?.id, 'over.id:', over?.id);
+    
+    if (!over) {
+      console.log('No over element - drop cancelled or outside bounds');
+      return;
+    }
+    if (active.id === over.id) {
+      console.log('Same element - no reorder needed');
+      return;
+    }
     
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
@@ -948,7 +981,8 @@ function App() {
       if (idStr.includes('-tile-')) {
         const match = idStr.match(/^(bank|loan)-tile-(.+)$/);
         if (match) {
-          const parsedId = parseInt(match[2]);
+          // Use parseFloat instead of parseInt to preserve decimal IDs
+          const parsedId = parseFloat(match[2]);
           console.log('Tile match:', match, 'parsedId:', parsedId);
           return { type: 'tile' as const, id: parsedId };
         }
@@ -1044,14 +1078,19 @@ function App() {
       return t;
     }));
     
-    setAccounts(prev => prev.map(a => {
-      if (accountUpdates[a.id] !== undefined) {
-        return { ...a, order: accountUpdates[a.id] };
-      }
-      return a;
-    }));
+    setAccounts(prev => {
+      const updated = prev.map(a => {
+        if (accountUpdates[a.id] !== undefined) {
+          console.log(`Updating account ${a.id} order from ${a.order} to ${accountUpdates[a.id]}`);
+          return { ...a, order: accountUpdates[a.id] };
+        }
+        return a;
+      });
+      console.log('Updated accounts:', updated);
+      return updated;
+    });
     
-    console.log('State updates applied');
+    console.log('State updates applied - reordered from index', oldIndex, 'to', newIndex);
   };
   
   // SortableAccount component for drag-and-drop
@@ -4115,17 +4154,29 @@ function App() {
   function handleBackup() {
     // Backup all localStorage data
     const backup = {
+      // Core data
       tiles: localStorage.getItem('tiles') ? JSON.parse(localStorage.getItem('tiles')!) : [],
       tabs: localStorage.getItem('tabs') ? JSON.parse(localStorage.getItem('tabs')!) : [],
       financeTiles: localStorage.getItem('financeTiles') ? JSON.parse(localStorage.getItem('financeTiles')!) : [],
       homePageTabs: localStorage.getItem('homePageTabs') ? JSON.parse(localStorage.getItem('homePageTabs')!) : [],
       creditCards: localStorage.getItem('creditCards') ? JSON.parse(localStorage.getItem('creditCards')!) : [],
+      // Accounts module (Bank Accounts, Assets, Loans)
       accounts: localStorage.getItem('accounts') ? JSON.parse(localStorage.getItem('accounts')!) : [],
+      // Other data
       stockSymbols: localStorage.getItem('stockSymbols') ? JSON.parse(localStorage.getItem('stockSymbols')!) : [],
       expandedHomePageTabs: localStorage.getItem('expandedHomePageTabs') ? JSON.parse(localStorage.getItem('expandedHomePageTabs')!) : [],
       pickedFolders: localStorage.getItem('pickedFolders') ? JSON.parse(localStorage.getItem('pickedFolders')!) : [],
       bannerTitle: localStorage.getItem('bannerTitle') || '',
       lastPaymentsReminderShown: localStorage.getItem('lastPaymentsReminderShown') || '',
+      // Additional settings and data
+      budgetCategories: localStorage.getItem('budgetCategories') ? JSON.parse(localStorage.getItem('budgetCategories')!) : [],
+      activeSessions: localStorage.getItem('activeSessions') ? JSON.parse(localStorage.getItem('activeSessions')!) : [],
+      receiptFiles: localStorage.getItem('receiptFiles') ? JSON.parse(localStorage.getItem('receiptFiles')!) : [],
+      // UI preferences
+      selectedMainTab: localStorage.getItem('selectedMainTab') || 'home',
+      hideEmptyCategories: localStorage.getItem('hideEmptyCategories') === 'true',
+      categoriesExpanded: localStorage.getItem('categoriesExpanded') ? JSON.parse(localStorage.getItem('categoriesExpanded')!) : {},
+      sidebarWidth: localStorage.getItem('sidebarWidth') ? parseInt(localStorage.getItem('sidebarWidth')!) : 240,
       backupDate: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -4137,6 +4188,97 @@ function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  // Backup source code from GitHub
+  async function handleBackupSourceCode() {
+    const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Baxter372/WebAppMgmt/main';
+    const sourceFiles = [
+      { path: 'src/App.tsx', name: 'App.tsx' },
+      { path: 'src/App.css', name: 'App.css' },
+      { path: 'src/main.tsx', name: 'main.tsx' },
+      { path: 'src/index.css', name: 'index.css' },
+      { path: 'src/LandingPage.tsx', name: 'LandingPage.tsx' },
+      { path: 'src/LandingPage.css', name: 'LandingPage.css' },
+      { path: 'index.html', name: 'index.html' },
+      { path: 'package.json', name: 'package.json' },
+      { path: 'vite.config.ts', name: 'vite.config.ts' },
+    ];
+
+    try {
+      // Create a combined backup with data + source code info
+      const dataBackup = {
+        // Core data
+        tiles: localStorage.getItem('tiles') ? JSON.parse(localStorage.getItem('tiles')!) : [],
+        tabs: localStorage.getItem('tabs') ? JSON.parse(localStorage.getItem('tabs')!) : [],
+        financeTiles: localStorage.getItem('financeTiles') ? JSON.parse(localStorage.getItem('financeTiles')!) : [],
+        homePageTabs: localStorage.getItem('homePageTabs') ? JSON.parse(localStorage.getItem('homePageTabs')!) : [],
+        creditCards: localStorage.getItem('creditCards') ? JSON.parse(localStorage.getItem('creditCards')!) : [],
+        // Accounts module (Bank Accounts, Assets, Loans)
+        accounts: localStorage.getItem('accounts') ? JSON.parse(localStorage.getItem('accounts')!) : [],
+        // Other data
+        stockSymbols: localStorage.getItem('stockSymbols') ? JSON.parse(localStorage.getItem('stockSymbols')!) : [],
+        expandedHomePageTabs: localStorage.getItem('expandedHomePageTabs') ? JSON.parse(localStorage.getItem('expandedHomePageTabs')!) : [],
+        pickedFolders: localStorage.getItem('pickedFolders') ? JSON.parse(localStorage.getItem('pickedFolders')!) : [],
+        bannerTitle: localStorage.getItem('bannerTitle') || '',
+        lastPaymentsReminderShown: localStorage.getItem('lastPaymentsReminderShown') || '',
+        // Additional settings and data
+        budgetCategories: localStorage.getItem('budgetCategories') ? JSON.parse(localStorage.getItem('budgetCategories')!) : [],
+        activeSessions: localStorage.getItem('activeSessions') ? JSON.parse(localStorage.getItem('activeSessions')!) : [],
+        receiptFiles: localStorage.getItem('receiptFiles') ? JSON.parse(localStorage.getItem('receiptFiles')!) : [],
+        // UI preferences
+        selectedMainTab: localStorage.getItem('selectedMainTab') || 'home',
+        hideEmptyCategories: localStorage.getItem('hideEmptyCategories') === 'true',
+        categoriesExpanded: localStorage.getItem('categoriesExpanded') ? JSON.parse(localStorage.getItem('categoriesExpanded')!) : {},
+        sidebarWidth: localStorage.getItem('sidebarWidth') ? parseInt(localStorage.getItem('sidebarWidth')!) : 240,
+        backupDate: new Date().toISOString(),
+      };
+
+      // Fetch all source files from GitHub
+      const sourceCode: Record<string, string> = {};
+      let successCount = 0;
+      
+      for (const file of sourceFiles) {
+        try {
+          const response = await fetch(`${GITHUB_RAW_BASE}/${file.path}`);
+          if (response.ok) {
+            sourceCode[file.path] = await response.text();
+            successCount++;
+          }
+        } catch (e) {
+          console.warn(`Could not fetch ${file.path}:`, e);
+        }
+      }
+
+      // Create full backup object with both data and source code
+      const fullBackup = {
+        _backupType: 'FULL_BACKUP_WITH_SOURCE',
+        _backupVersion: '2.0',
+        _githubRepo: 'https://github.com/Baxter372/WebAppMgmt',
+        backupDate: new Date().toISOString(),
+        data: dataBackup,
+        sourceCode: sourceCode,
+        _restoreInstructions: [
+          '1. To restore DATA: Use the Restore button in the app',
+          '2. To restore SOURCE CODE: Extract sourceCode files to your project src/ folder',
+          '3. Or run: Backup-All.bat in the project folder for local backups'
+        ]
+      };
+
+      const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `finance-companion-FULL-backup-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert(`✅ Full backup created!\n\nIncluded:\n• All your data (tiles, settings, etc.)\n• ${successCount}/${sourceFiles.length} source code files from GitHub\n\nSave this file in a safe location!`);
+    } catch (error) {
+      alert('Error creating full backup: ' + error);
+    }
   }
   function handleRestoreClick() {
     if (fileInputRef.current) {
@@ -4215,6 +4357,35 @@ function App() {
         if (restoreData.lastPaymentsReminderShown) {
           localStorage.setItem('lastPaymentsReminderShown', restoreData.lastPaymentsReminderShown);
         }
+        // Restore additional settings and data
+        if (restoreData.budgetCategories) {
+          localStorage.setItem('budgetCategories', JSON.stringify(restoreData.budgetCategories));
+        }
+        if (restoreData.activeSessions) {
+          localStorage.setItem('activeSessions', JSON.stringify(restoreData.activeSessions));
+          setActiveSessions(restoreData.activeSessions);
+        }
+        if (restoreData.receiptFiles) {
+          localStorage.setItem('receiptFiles', JSON.stringify(restoreData.receiptFiles));
+          setReceiptFiles(restoreData.receiptFiles);
+        }
+        // Restore UI preferences
+        if (restoreData.selectedMainTab) {
+          localStorage.setItem('selectedMainTab', restoreData.selectedMainTab);
+          setSelectedMainTab(restoreData.selectedMainTab);
+        }
+        if (restoreData.hideEmptyCategories !== undefined) {
+          localStorage.setItem('hideEmptyCategories', restoreData.hideEmptyCategories.toString());
+          setHideEmptyCategories(restoreData.hideEmptyCategories);
+        }
+        if (restoreData.categoriesExpanded) {
+          localStorage.setItem('categoriesExpanded', JSON.stringify(restoreData.categoriesExpanded));
+          setCategoriesExpanded(restoreData.categoriesExpanded);
+        }
+        if (restoreData.sidebarWidth) {
+          localStorage.setItem('sidebarWidth', String(restoreData.sidebarWidth));
+          setSidebarWidth(restoreData.sidebarWidth);
+        }
         
         setShowRestoreModal(false);
         setRestoreData(null);
@@ -4276,6 +4447,40 @@ function App() {
       }
       if (data.lastPaymentsReminderShown) {
         localStorage.setItem('lastPaymentsReminderShown', data.lastPaymentsReminderShown);
+      }
+      // Restore accounts (Bank Accounts, Assets, Loans)
+      if (data.accounts) {
+        localStorage.setItem('accounts', JSON.stringify(data.accounts));
+        setAccounts(data.accounts);
+      }
+      // Restore additional settings and data
+      if (data.budgetCategories) {
+        localStorage.setItem('budgetCategories', JSON.stringify(data.budgetCategories));
+      }
+      if (data.activeSessions) {
+        localStorage.setItem('activeSessions', JSON.stringify(data.activeSessions));
+        setActiveSessions(data.activeSessions);
+      }
+      if (data.receiptFiles) {
+        localStorage.setItem('receiptFiles', JSON.stringify(data.receiptFiles));
+        setReceiptFiles(data.receiptFiles);
+      }
+      // Restore UI preferences
+      if (data.selectedMainTab) {
+        localStorage.setItem('selectedMainTab', data.selectedMainTab);
+        setSelectedMainTab(data.selectedMainTab);
+      }
+      if (data.hideEmptyCategories !== undefined) {
+        localStorage.setItem('hideEmptyCategories', data.hideEmptyCategories.toString());
+        setHideEmptyCategories(data.hideEmptyCategories);
+      }
+      if (data.categoriesExpanded) {
+        localStorage.setItem('categoriesExpanded', JSON.stringify(data.categoriesExpanded));
+        setCategoriesExpanded(data.categoriesExpanded);
+      }
+      if (data.sidebarWidth) {
+        localStorage.setItem('sidebarWidth', String(data.sidebarWidth));
+        setSidebarWidth(data.sidebarWidth);
       }
       
       setShowSimpleImportModal(false);
@@ -5132,6 +5337,38 @@ function App() {
               aria-label="Simple Import"
             >
               📋
+            </div>
+            <div
+              onClick={handleBackupSourceCode}
+              title="Full Backup (Data + Source Code)"
+              style={{
+                background: '#ff9800',
+                color: '#fff',
+                borderRadius: '50%',
+                width: 40,
+                height: 40,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: 20,
+                boxShadow: '0 2px 8px rgba(255, 152, 0, 0.3)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f57c00';
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 152, 0, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#ff9800';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(255, 152, 0, 0.3)';
+              }}
+              role="button"
+              aria-label="Full Backup with Source Code"
+            >
+              📦
             </div>
             <input
               type="file"
@@ -8448,11 +8685,11 @@ function App() {
                     return (
                       <DndContext 
                         sensors={sensors}
-                        collisionDetection={closestCenter} 
+                        collisionDetection={pointerWithin} 
                         onDragEnd={handleAccountDragEnd}
                       >
                         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, touchAction: 'none' }}>
                             {unifiedList.map(item => 
                               item.type === 'tile' ? (
                                 <SortableTileBankAccountCard key={`tile-${item.data.id}`} tile={item.data} prefix="bank" />
@@ -8516,11 +8753,11 @@ function App() {
                     return (
                       <DndContext 
                         sensors={sensors}
-                        collisionDetection={closestCenter} 
+                        collisionDetection={pointerWithin} 
                         onDragEnd={handleAccountDragEnd}
                       >
                         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, touchAction: 'none' }}>
                             {unifiedList.map(item => 
                               item.type === 'tile' ? (
                                 <SortableTileBankAccountCard key={`tile-${item.data.id}`} tile={item.data} prefix="loan" />
@@ -8572,11 +8809,11 @@ function App() {
                     return (
                       <DndContext 
                         sensors={sensors}
-                        collisionDetection={closestCenter} 
+                        collisionDetection={pointerWithin} 
                         onDragEnd={handleAccountDragEnd}
                       >
                         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, touchAction: 'none' }}>
                             {sortedAssets.map(account => (
                               <SortableAssetCard key={account.id} account={account} />
                             ))}
