@@ -144,11 +144,11 @@ type AssetType = 'Real Estate' | 'Business' | 'Vehicle' | 'Investment Property' 
 type Account = {
   id: string;
   name: string;
-  bankName: string;
+  bankName: string;  // For assets, this can be empty if paid off
   accountType: AccountType | AssetType;
-  accountNumber: string;  // Last 4 digits only for display
+  accountNumber: string;  // Last 4 digits only for display (optional for paid-off assets)
   routingNumber?: string;  // Last 4 digits only for display
-  currentBalance: number;
+  currentBalance: number;  // Current balance or current value for assets
   interestRate?: number;  // APY for savings, APR for loans
   creditLimit?: number;  // For credit lines
   monthlyPayment?: number;  // For loans
@@ -157,14 +157,17 @@ type Account = {
   notes?: string;
   isLoan: boolean;  // true for loans/mortgages, false for bank accounts
   isAsset?: boolean;  // true for assets (house, business, etc.)
-  link?: string;  // URL to online banking
+  isPaidOff?: boolean;  // true if asset has no associated loan (hides bank fields)
+  link?: string;  // URL to online banking or asset management
   dateOpened?: string;
-  linkedTileId?: number;  // Link to a Banking & Finance tile
-  order?: number;  // For drag-and-drop ordering
+  linkedTileId?: number;  // Link to a Banking & Finance tile for quick access
+  linkedLoanAccountId?: string;  // For assets: link to the loan account (e.g., mortgage for house)
+  order?: number;  // For drag-and-drop ordering within groups
   // Asset-specific fields
   purchasePrice?: number;
   purchaseDate?: string;
   address?: string;  // For real estate
+  description?: string;  // Additional description for the account/asset
 };
 type FinanceChild = { amount: number; date: string; };
 type FinanceTile = { id: number; name: string; description: string; children: FinanceChild[]; };
@@ -948,6 +951,8 @@ function App() {
   
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [accountFormType, setAccountFormType] = useState<string>('Checking');
+  const [accountFormIsPaidOff, setAccountFormIsPaidOff] = useState(false);
   
   // Handle account reordering via drag and drop (supports tiles, accounts, and assets)
   const handleAccountDragEnd = (event: any) => {
@@ -1151,6 +1156,8 @@ function App() {
           style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, cursor: 'pointer' }}
           onClick={() => {
             setEditingAccount(account);
+            setAccountFormType(account.accountType);
+            setAccountFormIsPaidOff(account.isPaidOff || false);
             setShowAccountModal(true);
           }}
         >
@@ -1202,18 +1209,55 @@ function App() {
             </div>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: isLoan ? '#c62828' : '#2e7d32' }}>
-            ${account.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
-          {!isLoan && account.interestRate && (
-            <div style={{ fontSize: 12, color: '#666' }}>{account.interestRate}% APY</div>
-          )}
-          {isLoan && (
-            <div style={{ fontSize: 12, color: '#666' }}>
-              {account.interestRate && `${account.interestRate}% APR`}
-              {account.paymentDueDay && ` • Due: ${account.paymentDueDay}${account.paymentDueDay === 1 ? 'st' : account.paymentDueDay === 2 ? 'nd' : account.paymentDueDay === 3 ? 'rd' : 'th'}`}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: isLoan ? '#c62828' : '#2e7d32' }}>
+              ${account.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
+            {!isLoan && account.interestRate && (
+              <div style={{ fontSize: 12, color: '#666' }}>{account.interestRate}% APY</div>
+            )}
+            {isLoan && (
+              <div style={{ fontSize: 12, color: '#666' }}>
+                {account.interestRate && `${account.interestRate}% APR`}
+                {account.paymentDueDay && ` • Due: ${account.paymentDueDay}${account.paymentDueDay === 1 ? 'st' : account.paymentDueDay === 2 ? 'nd' : account.paymentDueDay === 3 ? 'rd' : 'th'}`}
+              </div>
+            )}
+          </div>
+          {/* Link to bank website button */}
+          {(linkedTile?.url || account.link) && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(linkedTile?.url || account.link, '_blank');
+              }}
+              title={`Open ${linkedTile?.name || account.bankName} website`}
+              style={{
+                background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '8px 12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                boxShadow: '0 2px 6px rgba(25, 118, 210, 0.3)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(25, 118, 210, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(25, 118, 210, 0.3)';
+              }}
+            >
+              🔗 Open
+            </button>
           )}
         </div>
       </div>
@@ -1405,6 +1449,8 @@ function App() {
           style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, cursor: 'pointer' }}
           onClick={() => {
             setEditingAccount(account);
+            setAccountFormType(account.accountType);
+            setAccountFormIsPaidOff(account.isPaidOff || false);
             setShowAccountModal(true);
           }}
         >
@@ -8433,98 +8479,97 @@ function App() {
                   </span>
                 </div>
 
-                {/* Banking & Finance Tiles Section - Only show tiles without account info */}
+                {/* Quick Links to Banking Apps */}
                 {(() => {
-                  const tilesWithoutAccounts = tiles.filter(t => t.budgetCategory === 'finance' && !t.hasBankAccount);
+                  const financeTiles = tiles.filter(t => t.budgetCategory === 'finance');
                   
-                  if (tilesWithoutAccounts.length > 0) {
+                  if (financeTiles.length > 0) {
                     return (
                       <div style={{ marginBottom: 24 }}>
-                        {/* Tiles WITHOUT Bank Account Info - Show as compact icons */}
-                        {tilesWithoutAccounts.length > 0 && (
-                          <>
-                            <h3 style={{ 
-                              fontSize: 14, 
-                              fontWeight: 600, 
-                              color: '#666', 
-                              marginBottom: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                            }}>
-                              🔗 Other Banking Apps <span style={{ fontWeight: 400, fontSize: 12 }}>(click to add account info)</span>
-                            </h3>
-                            <div style={{ 
-                              display: 'flex', 
-                              flexWrap: 'wrap', 
-                              gap: 10,
-                              padding: 12,
-                              background: '#f8f9fa',
-                              borderRadius: 10,
-                              border: '1px solid #e0e0e0',
-                              marginBottom: 16,
-                            }}>
-                              {tilesWithoutAccounts.map(tile => (
-                                <div
-                                  key={tile.id}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    padding: '8px 12px',
-                                    background: '#fff',
-                                    borderRadius: 8,
-                                    border: '1px solid #e0e0e0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s ease',
+                        <h3 style={{ 
+                          fontSize: 14, 
+                          fontWeight: 600, 
+                          color: '#666', 
+                          marginBottom: 10,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}>
+                          🔗 Quick Links to Banking Apps
+                        </h3>
+                        <div style={{ 
+                          display: 'flex', 
+                          flexWrap: 'wrap', 
+                          gap: 10,
+                          padding: 12,
+                          background: '#f8f9fa',
+                          borderRadius: 10,
+                          border: '1px solid #e0e0e0',
+                        }}>
+                          {financeTiles.map(tile => {
+                            const linkedAccountCount = accounts.filter(a => a.linkedTileId === tile.id).length;
+                            return (
+                              <div
+                                key={tile.id}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '8px 12px',
+                                  background: linkedAccountCount > 0 ? '#e3f2fd' : '#fff',
+                                  borderRadius: 8,
+                                  border: linkedAccountCount > 0 ? '1px solid #90caf9' : '1px solid #e0e0e0',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'translateY(-2px)';
+                                  e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.12)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
+                                onClick={() => window.open(tile.url, '_blank')}
+                                title={`Open ${tile.name}${linkedAccountCount > 0 ? ` (${linkedAccountCount} account${linkedAccountCount > 1 ? 's' : ''} linked)` : ''}`}
+                              >
+                                <img 
+                                  src={tile.logo} 
+                                  alt={tile.name}
+                                  style={{ 
+                                    width: 28, 
+                                    height: 28, 
+                                    borderRadius: 6,
+                                    objectFit: 'contain',
                                   }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-2px)';
-                                    e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.12)';
-                                    e.currentTarget.style.borderColor = '#1976d2';
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect fill="%231976d2" width="28" height="28" rx="6"/><text x="14" y="18" text-anchor="middle" fill="white" font-size="14">🏦</text></svg>';
                                   }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = 'none';
-                                    e.currentTarget.style.borderColor = '#e0e0e0';
-                                  }}
-                                  onClick={() => handleEditTile(tile.id)}
-                                  title={`Click to add account info to ${tile.name}`}
-                                >
-                                  <img 
-                                    src={tile.logo} 
-                                    alt={tile.name}
-                                    style={{ 
-                                      width: 28, 
-                                      height: 28, 
-                                      borderRadius: 6,
-                                      objectFit: 'contain',
-                                    }}
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect fill="%231976d2" width="28" height="28" rx="6"/><text x="14" y="18" text-anchor="middle" fill="white" font-size="14">🏦</text></svg>';
-                                    }}
-                                  />
-                                  <span style={{ 
-                                    fontSize: 12, 
-                                    fontWeight: 500, 
-                                    color: '#333',
-                                  }}>
-                                    {tile.name}
-                                  </span>
+                                />
+                                <span style={{ 
+                                  fontSize: 12, 
+                                  fontWeight: 500, 
+                                  color: '#333',
+                                }}>
+                                  {tile.name}
+                                </span>
+                                {linkedAccountCount > 0 && (
                                   <span style={{
                                     fontSize: 10,
-                                    color: '#999',
-                                    background: '#f0f0f0',
+                                    color: '#1976d2',
+                                    background: '#bbdefb',
                                     padding: '2px 6px',
                                     borderRadius: 4,
+                                    fontWeight: 600,
                                   }}>
-                                    + Add
+                                    {linkedAccountCount}
                                   </span>
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
+                                )}
+                                <span style={{ fontSize: 12, color: '#1976d2' }}>↗</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   }
@@ -8536,6 +8581,8 @@ function App() {
                   <button
                     onClick={() => {
                       setEditingAccount(null);
+                      setAccountFormType('Checking');
+                      setAccountFormIsPaidOff(false);
                       setShowAccountModal(true);
                     }}
                     style={{
@@ -8574,15 +8621,10 @@ function App() {
                   marginBottom: 24 
                 }}>
                   {(() => {
-                    // Calculate totals from both Account entities AND tile bank accounts
-                    const bankAccounts = accounts.filter(a => !a.isLoan && !a.isAsset).reduce((sum, a) => sum + a.currentBalance, 0);
-                    const accountLoans = accounts.filter(a => a.isLoan).reduce((sum, a) => sum + a.currentBalance, 0);
-                    const accountAssets = accounts.filter(a => a.isAsset).reduce((sum, a) => sum + a.currentBalance, 0);
-                    const tileAssets = tiles.filter(t => t.hasBankAccount && !t.bankIsLoan).reduce((sum, t) => sum + (t.bankBalance || 0), 0);
-                    const tileLoans = tiles.filter(t => t.hasBankAccount && t.bankIsLoan).reduce((sum, t) => sum + (t.bankBalance || 0), 0);
-                    const totalBankAccounts = bankAccounts + tileAssets;
-                    const totalLoans = accountLoans + tileLoans;
-                    const totalAssets = accountAssets;
+                    // Calculate totals from Account entities
+                    const totalBankAccounts = accounts.filter(a => !a.isLoan && !a.isAsset).reduce((sum, a) => sum + a.currentBalance, 0);
+                    const totalLoans = accounts.filter(a => a.isLoan).reduce((sum, a) => sum + a.currentBalance, 0);
+                    const totalAssets = accounts.filter(a => a.isAsset).reduce((sum, a) => sum + a.currentBalance, 0);
                     const netWorth = totalBankAccounts + totalAssets - totalLoans;
                     
                     return (
@@ -8636,7 +8678,7 @@ function App() {
                   })()}
                 </div>
 
-                {/* Bank Accounts Section - includes Account entities AND tiles with bank accounts */}
+                {/* Bank Accounts Section - Grouped by Linked Card */}
                 <div style={{ marginBottom: 32 }}>
                   <h3 style={{ 
                     fontSize: 18, 
@@ -8651,10 +8693,8 @@ function App() {
                   </h3>
                   {(() => {
                     const bankAccountsList = accounts.filter(a => !a.isLoan && !a.isAsset);
-                    const tileBankAccounts = tiles.filter(t => t.hasBankAccount && !t.bankIsLoan);
-                    const hasAny = bankAccountsList.length > 0 || tileBankAccounts.length > 0;
                     
-                    if (!hasAny) {
+                    if (bankAccountsList.length === 0) {
                       return (
                         <div style={{
                           padding: 32,
@@ -8663,49 +8703,163 @@ function App() {
                           borderRadius: 12,
                           color: '#666',
                         }}>
-                          No bank accounts added yet. Click "Add Account or Loan" or add account info to a Banking tile.
+                          No bank accounts added yet. Click "Add Account, Loan, or Asset" to add your first account.
                         </div>
                       );
                     }
                     
-                    // Build unified sorted list of tiles and accounts
-                    type UnifiedBankItem = 
-                      | { type: 'tile'; data: Tile; order: number }
-                      | { type: 'account'; data: Account; order: number };
+                    // Group accounts by linkedTileId
+                    const grouped: { [key: string]: Account[] } = {};
+                    bankAccountsList.forEach(account => {
+                      const key = account.linkedTileId ? String(account.linkedTileId) : 'unlinked';
+                      if (!grouped[key]) grouped[key] = [];
+                      grouped[key].push(account);
+                    });
                     
-                    const unifiedList: UnifiedBankItem[] = [
-                      ...tileBankAccounts.map(t => ({ type: 'tile' as const, data: t, order: t.bankAccountOrder ?? 0 })),
-                      ...bankAccountsList.map(a => ({ type: 'account' as const, data: a, order: a.order ?? 0 })),
-                    ].sort((a, b) => a.order - b.order);
+                    // Sort accounts within each group by order
+                    Object.keys(grouped).forEach(key => {
+                      grouped[key].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    });
                     
-                    const sortableIds = unifiedList.map(item => 
-                      item.type === 'tile' ? `bank-tile-${item.data.id}` : `bank-account-${item.data.id}`
-                    );
+                    // Get linked tiles and unlinked accounts
+                    const linkedTileIds = Object.keys(grouped).filter(k => k !== 'unlinked');
+                    const unlinkedAccounts = grouped['unlinked'] || [];
                     
                     return (
-                      <DndContext 
-                        sensors={sensors}
-                        collisionDetection={pointerWithin} 
-                        onDragEnd={handleAccountDragEnd}
-                      >
-                        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, touchAction: 'none' }}>
-                            {unifiedList.map(item => 
-                              item.type === 'tile' ? (
-                                <SortableTileBankAccountCard key={`tile-${item.data.id}`} tile={item.data} prefix="bank" />
-                              ) : (
-                                <SortableAccountCard key={`account-${item.data.id}`} account={item.data} prefix="bank-account" />
-                              )
-                            )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Accounts grouped by linked card */}
+                        {linkedTileIds.map(tileIdStr => {
+                          const tileId = parseFloat(tileIdStr);
+                          const linkedTile = tiles.find(t => t.id === tileId);
+                          const accountsInGroup = grouped[tileIdStr];
+                          const groupTotal = accountsInGroup.reduce((sum, a) => sum + a.currentBalance, 0);
+                          
+                          return (
+                            <div key={tileIdStr} style={{
+                              background: '#fff',
+                              borderRadius: 12,
+                              border: '1px solid #e0e0e0',
+                              overflow: 'hidden',
+                            }}>
+                              {/* Card Header */}
+                              <div 
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '12px 16px',
+                                  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                                  borderBottom: '1px solid #90caf9',
+                                  cursor: linkedTile?.url ? 'pointer' : 'default',
+                                }}
+                                onClick={() => linkedTile?.url && window.open(linkedTile.url, '_blank')}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  {linkedTile?.logo && (
+                                    <img 
+                                      src={linkedTile.logo} 
+                                      alt={linkedTile.name}
+                                      style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'contain' }}
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                  )}
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: '#1565c0' }}>
+                                      {linkedTile?.name || 'Unknown Bank'}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#666' }}>
+                                      {accountsInGroup.length} account{accountsInGroup.length > 1 ? 's' : ''}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontWeight: 700, color: '#0d47a1', fontSize: 18 }}>
+                                      ${groupTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </div>
+                                  </div>
+                                  {linkedTile?.url && (
+                                    <span style={{ fontSize: 16, color: '#1976d2' }}>↗</span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Accounts in this group */}
+                              <DndContext 
+                                sensors={sensors}
+                                collisionDetection={pointerWithin} 
+                                onDragEnd={handleAccountDragEnd}
+                              >
+                                <SortableContext 
+                                  items={accountsInGroup.map(a => `bank-account-${a.id}`)} 
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {accountsInGroup.map(account => (
+                                      <SortableAccountCard key={account.id} account={account} prefix="bank-account" />
+                                    ))}
+                                  </div>
+                                </SortableContext>
+                              </DndContext>
+                            </div>
+                          );
+                        })}
+                        
+                        {/* Unlinked Accounts */}
+                        {unlinkedAccounts.length > 0 && (
+                          <div style={{
+                            background: '#fff',
+                            borderRadius: 12,
+                            border: '1px dashed #bdbdbd',
+                            overflow: 'hidden',
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '12px 16px',
+                              background: '#f5f5f5',
+                              borderBottom: '1px dashed #bdbdbd',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <span style={{ fontSize: 24 }}>🏦</span>
+                                <div>
+                                  <div style={{ fontWeight: 600, color: '#666' }}>Other Accounts</div>
+                                  <div style={{ fontSize: 11, color: '#999' }}>
+                                    Not linked to a banking app
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: 700, color: '#333', fontSize: 18 }}>
+                                ${unlinkedAccounts.reduce((sum, a) => sum + a.currentBalance, 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                            <DndContext 
+                              sensors={sensors}
+                              collisionDetection={pointerWithin} 
+                              onDragEnd={handleAccountDragEnd}
+                            >
+                              <SortableContext 
+                                items={unlinkedAccounts.map(a => `bank-account-${a.id}`)} 
+                                strategy={verticalListSortingStrategy}
+                              >
+                                <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  {unlinkedAccounts.map(account => (
+                                    <SortableAccountCard key={account.id} account={account} prefix="bank-account" />
+                                  ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
                           </div>
-                        </SortableContext>
-                      </DndContext>
+                        )}
+                      </div>
                     );
                   })()}
                 </div>
 
-                {/* Loans Section - includes Account entities AND tiles with loan info */}
-                <div>
+                {/* Loans Section */}
+                <div style={{ marginBottom: 32 }}>
                   <h3 style={{ 
                     fontSize: 18, 
                     fontWeight: 600, 
@@ -8719,10 +8873,8 @@ function App() {
                   </h3>
                   {(() => {
                     const loansList = accounts.filter(a => a.isLoan);
-                    const tileLoans = tiles.filter(t => t.hasBankAccount && t.bankIsLoan);
-                    const hasAny = loansList.length > 0 || tileLoans.length > 0;
                     
-                    if (!hasAny) {
+                    if (loansList.length === 0) {
                       return (
                         <div style={{
                           padding: 32,
@@ -8731,24 +8883,13 @@ function App() {
                           borderRadius: 12,
                           color: '#666',
                         }}>
-                          No loans added yet. Click "Add Account or Loan" or add loan info to a Banking tile.
+                          No loans added yet. Click "Add Account, Loan, or Asset" and select a loan type.
                         </div>
                       );
                     }
                     
-                    // Build unified sorted list of tiles and accounts
-                    type UnifiedLoanItem = 
-                      | { type: 'tile'; data: Tile; order: number }
-                      | { type: 'account'; data: Account; order: number };
-                    
-                    const unifiedList: UnifiedLoanItem[] = [
-                      ...tileLoans.map(t => ({ type: 'tile' as const, data: t, order: t.bankAccountOrder ?? 0 })),
-                      ...loansList.map(a => ({ type: 'account' as const, data: a, order: a.order ?? 0 })),
-                    ].sort((a, b) => a.order - b.order);
-                    
-                    const sortableIds = unifiedList.map(item => 
-                      item.type === 'tile' ? `loan-tile-${item.data.id}` : `loan-account-${item.data.id}`
-                    );
+                    // Sort loans by order
+                    const sortedLoans = [...loansList].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
                     
                     return (
                       <DndContext 
@@ -8756,15 +8897,44 @@ function App() {
                         collisionDetection={pointerWithin} 
                         onDragEnd={handleAccountDragEnd}
                       >
-                        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                        <SortableContext 
+                          items={sortedLoans.map(a => `loan-account-${a.id}`)} 
+                          strategy={verticalListSortingStrategy}
+                        >
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, touchAction: 'none' }}>
-                            {unifiedList.map(item => 
-                              item.type === 'tile' ? (
-                                <SortableTileBankAccountCard key={`tile-${item.data.id}`} tile={item.data} prefix="loan" />
-                              ) : (
-                                <SortableAccountCard key={`account-${item.data.id}`} account={item.data} prefix="loan-account" />
-                              )
-                            )}
+                            {sortedLoans.map(loan => {
+                              const linkedTile = loan.linkedTileId ? tiles.find(t => t.id === loan.linkedTileId) : null;
+                              // Find asset linked to this loan
+                              const linkedAsset = accounts.find(a => a.isAsset && a.linkedLoanAccountId === loan.id);
+                              
+                              return (
+                                <div
+                                  key={loan.id}
+                                  style={{
+                                    background: '#fff',
+                                    borderRadius: 12,
+                                    border: '1px solid #ef9a9a',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  <SortableAccountCard account={loan} prefix="loan-account" />
+                                  {linkedAsset && (
+                                    <div style={{
+                                      padding: '8px 16px',
+                                      background: '#fff3e0',
+                                      borderTop: '1px dashed #ffcc80',
+                                      fontSize: 12,
+                                      color: '#e65100',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 8,
+                                    }}>
+                                      🏠 Linked to: <strong>{linkedAsset.name}</strong>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </SortableContext>
                       </DndContext>
@@ -8826,7 +8996,7 @@ function App() {
 
                 {/* Account Modal */}
                 {showAccountModal && (
-                  <Modal onClose={() => { setShowAccountModal(false); setEditingAccount(null); }}>
+                  <Modal onClose={() => { setShowAccountModal(false); setEditingAccount(null); setAccountFormType('Checking'); setAccountFormIsPaidOff(false); }}>
                     <h2 style={{ marginBottom: 20, color: '#333' }}>
                       {editingAccount ? 'Edit Account' : 'Add Account, Loan, or Asset'}
                     </h2>
@@ -8835,7 +9005,7 @@ function App() {
                         e.preventDefault();
                         const form = e.target as HTMLFormElement;
                         const formData = new FormData(form);
-                        const accountType = formData.get('accountType') as string;
+                        const accountType = accountFormType;
                         const isLoan = accountType === 'Mortgage' || 
                                        accountType === 'Auto Loan' || 
                                        accountType === 'Personal Loan' || 
@@ -8850,29 +9020,34 @@ function App() {
                                         accountType === 'Other Asset';
                         
                         const linkedTileIdStr = formData.get('linkedTileId') as string;
+                        const linkedLoanIdStr = formData.get('linkedLoanAccountId') as string;
                         const newAccount: Account = {
                           id: editingAccount?.id || Date.now().toString(),
                           name: formData.get('name') as string,
-                          bankName: isAsset ? (formData.get('address') as string || formData.get('bankName') as string) : (formData.get('bankName') as string),
+                          bankName: (isAsset && accountFormIsPaidOff) ? '' : (formData.get('bankName') as string || ''),
                           accountType: accountType as AccountType | AssetType,
-                          accountNumber: formData.get('accountNumber') as string,
-                          routingNumber: formData.get('routingNumber') as string || undefined,
+                          accountNumber: (isAsset && accountFormIsPaidOff) ? '' : (formData.get('accountNumber') as string || ''),
+                          routingNumber: (isAsset && accountFormIsPaidOff) ? undefined : (formData.get('routingNumber') as string || undefined),
                           currentBalance: parseFloat(formData.get('currentBalance') as string) || 0,
-                          interestRate: parseFloat(formData.get('interestRate') as string) || undefined,
-                          creditLimit: parseFloat(formData.get('creditLimit') as string) || undefined,
-                          monthlyPayment: parseFloat(formData.get('monthlyPayment') as string) || undefined,
-                          paymentDueDay: parseInt(formData.get('paymentDueDay') as string) || undefined,
+                          interestRate: isLoan ? (parseFloat(formData.get('interestRate') as string) || undefined) : undefined,
+                          creditLimit: accountType === 'Credit Line' ? (parseFloat(formData.get('creditLimit') as string) || undefined) : undefined,
+                          monthlyPayment: isLoan ? (parseFloat(formData.get('monthlyPayment') as string) || undefined) : undefined,
+                          paymentDueDay: isLoan ? (parseInt(formData.get('paymentDueDay') as string) || undefined) : undefined,
                           maturityDate: formData.get('maturityDate') as string || undefined,
                           notes: formData.get('notes') as string || undefined,
                           isLoan,
                           isAsset,
+                          isPaidOff: isAsset ? accountFormIsPaidOff : undefined,
                           link: formData.get('link') as string || undefined,
                           dateOpened: formData.get('dateOpened') as string || undefined,
-                          linkedTileId: linkedTileIdStr ? parseInt(linkedTileIdStr) : undefined,
+                          linkedTileId: linkedTileIdStr ? parseFloat(linkedTileIdStr) : undefined,
+                          linkedLoanAccountId: (isAsset && !accountFormIsPaidOff && linkedLoanIdStr) ? linkedLoanIdStr : undefined,
+                          order: editingAccount?.order,
                           // Asset-specific fields
                           purchasePrice: isAsset ? (parseFloat(formData.get('purchasePrice') as string) || undefined) : undefined,
                           purchaseDate: isAsset ? (formData.get('purchaseDate') as string || undefined) : undefined,
                           address: isAsset ? (formData.get('address') as string || undefined) : undefined,
+                          description: formData.get('description') as string || undefined,
                         };
                         
                         if (editingAccount) {
@@ -8882,6 +9057,8 @@ function App() {
                         }
                         setShowAccountModal(false);
                         setEditingAccount(null);
+                        setAccountFormType('Checking');
+                        setAccountFormIsPaidOff(false);
                       }}
                       style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
                     >
@@ -8900,27 +9077,34 @@ function App() {
                         </select>
                       </label>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: (['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && accountFormIsPaidOff) ? '1fr' : '1fr 1fr', gap: 16 }}>
                         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Account Name *</span>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>
+                            {['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) ? 'Asset Name *' : 'Account Name *'}
+                          </span>
                           <input
                             name="name"
                             defaultValue={editingAccount?.name || ''}
                             required
-                            placeholder="e.g., Primary Checking"
+                            placeholder={['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) ? 'e.g., Lake House, 2022 Sequoia' : 'e.g., Primary Checking'}
                             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
                           />
                         </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Bank/Lender/Description *</span>
-                          <input
-                            name="bankName"
-                            defaultValue={editingAccount?.bankName || ''}
-                            required
-                            placeholder="e.g., Chase Bank or 123 Main St"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
+                        {/* Bank/Lender field - Hidden for paid-off assets */}
+                        {!(['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && accountFormIsPaidOff) && (
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>
+                              {['Mortgage', 'Auto Loan', 'Personal Loan', 'Student Loan', 'Credit Line'].includes(accountFormType) ? 'Lender *' : 'Bank Name *'}
+                            </span>
+                            <input
+                              name="bankName"
+                              defaultValue={editingAccount?.bankName || ''}
+                              required={!(['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && accountFormIsPaidOff)}
+                              placeholder={['Mortgage', 'Auto Loan', 'Personal Loan', 'Student Loan', 'Credit Line'].includes(accountFormType) ? 'e.g., Wells Fargo Mortgage' : 'e.g., Chase Bank'}
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                        )}
                       </div>
                       
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -8928,7 +9112,13 @@ function App() {
                           <span style={{ fontWeight: 500, fontSize: 13 }}>Account Type *</span>
                           <select
                             name="accountType"
-                            defaultValue={editingAccount?.accountType || 'Checking'}
+                            value={accountFormType}
+                            onChange={(e) => {
+                              setAccountFormType(e.target.value);
+                              // Reset paid off when switching away from assets
+                              const isAssetType = ['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(e.target.value);
+                              if (!isAssetType) setAccountFormIsPaidOff(false);
+                            }}
                             required
                             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
                           >
@@ -8958,7 +9148,7 @@ function App() {
                           </select>
                         </label>
                         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Current Balance *</span>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>{['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) ? 'Current Value *' : 'Current Balance *'}</span>
                           <input
                             name="currentBalance"
                             type="number"
@@ -8971,65 +9161,121 @@ function App() {
                         </label>
                       </div>
                       
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Account # (last 4)</span>
+                      {/* Paid Off checkbox for Assets */}
+                      {['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && (
+                        <label style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 10, 
+                          padding: 12, 
+                          background: accountFormIsPaidOff ? '#e8f5e9' : '#fff3e0', 
+                          borderRadius: 8, 
+                          border: accountFormIsPaidOff ? '1px solid #81c784' : '1px solid #ffcc80',
+                          cursor: 'pointer',
+                        }}>
                           <input
-                            name="accountNumber"
-                            defaultValue={editingAccount?.accountNumber || ''}
-                            maxLength={4}
-                            placeholder="1234"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            type="checkbox"
+                            checked={accountFormIsPaidOff}
+                            onChange={(e) => setAccountFormIsPaidOff(e.target.checked)}
+                            style={{ width: 18, height: 18 }}
                           />
+                          <span style={{ fontWeight: 500, fontSize: 14 }}>
+                            {accountFormIsPaidOff ? '✅ Paid Off - No Associated Loan' : '💳 Has Associated Loan/Financing'}
+                          </span>
                         </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Routing # (last 4)</span>
-                          <input
-                            name="routingNumber"
-                            defaultValue={editingAccount?.routingNumber || ''}
-                            maxLength={4}
-                            placeholder="5678"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
-                      </div>
+                      )}
                       
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                      {/* Bank Account Fields - Hidden for paid-off assets */}
+                      {!(['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && accountFormIsPaidOff) && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>Account # (last 4)</span>
+                            <input
+                              name="accountNumber"
+                              defaultValue={editingAccount?.accountNumber || ''}
+                              maxLength={4}
+                              placeholder="1234"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>Routing # (last 4)</span>
+                            <input
+                              name="routingNumber"
+                              defaultValue={editingAccount?.routingNumber || ''}
+                              maxLength={4}
+                              placeholder="5678"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                        </div>
+                      )}
+                      
+                      {/* Loan-specific fields - Only show for loan types */}
+                      {['Mortgage', 'Auto Loan', 'Personal Loan', 'Student Loan', 'Credit Line'].includes(accountFormType) && (
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '1fr 1fr 1fr', 
+                          gap: 16,
+                          padding: 16,
+                          background: '#e3f2fd',
+                          borderRadius: 8,
+                          border: '1px solid #90caf9',
+                        }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>📈 Interest Rate %</span>
+                            <input
+                              name="interestRate"
+                              type="number"
+                              step="0.01"
+                              defaultValue={editingAccount?.interestRate || ''}
+                              placeholder="4.50"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>💵 Monthly Payment</span>
+                            <input
+                              name="monthlyPayment"
+                              type="number"
+                              step="0.01"
+                              defaultValue={editingAccount?.monthlyPayment || ''}
+                              placeholder="500.00"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>📅 Due Day (1-31)</span>
+                            <input
+                              name="paymentDueDay"
+                              type="number"
+                              min="1"
+                              max="31"
+                              defaultValue={editingAccount?.paymentDueDay || ''}
+                              placeholder="15"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                        </div>
+                      )}
+                      
+                      {/* Link to Loan Account - For assets with financing */}
+                      {['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && !accountFormIsPaidOff && (
                         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Interest Rate %</span>
-                          <input
-                            name="interestRate"
-                            type="number"
-                            step="0.01"
-                            defaultValue={editingAccount?.interestRate || ''}
-                            placeholder="4.50"
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>🔗 Link to Loan Account</span>
+                          <select
+                            name="linkedLoanAccountId"
+                            defaultValue={editingAccount?.linkedLoanAccountId || ''}
                             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
+                          >
+                            <option value="">-- Select Loan --</option>
+                            {accounts.filter(a => a.isLoan && a.id !== editingAccount?.id).map(loan => (
+                              <option key={loan.id} value={loan.id}>{loan.name} ({loan.accountType})</option>
+                            ))}
+                          </select>
+                          <span style={{ fontSize: 11, color: '#666' }}>Link this asset to its loan/mortgage for tracking</span>
                         </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Monthly Payment</span>
-                          <input
-                            name="monthlyPayment"
-                            type="number"
-                            step="0.01"
-                            defaultValue={editingAccount?.monthlyPayment || ''}
-                            placeholder="500.00"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>Due Day (1-31)</span>
-                          <input
-                            name="paymentDueDay"
-                            type="number"
-                            min="1"
-                            max="31"
-                            defaultValue={editingAccount?.paymentDueDay || ''}
-                            placeholder="15"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
-                      </div>
+                      )}
                       
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontWeight: 500, fontSize: 13 }}>Online Banking Link</span>
@@ -9043,45 +9289,56 @@ function App() {
                       </label>
                       
                       {/* Asset-specific fields */}
-                      <div style={{ 
-                        display: editingAccount?.isAsset || ['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(editingAccount?.accountType || '') ? 'grid' : 'none', 
-                        gridTemplateColumns: '1fr 1fr', 
-                        gap: 16,
-                        padding: 16,
-                        background: '#fff3e0',
-                        borderRadius: 8,
-                        border: '1px solid #ffcc80',
-                      }}>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>🏠 Address/Location</span>
-                          <input
-                            name="address"
-                            defaultValue={editingAccount?.address || ''}
-                            placeholder="e.g., 123 Main St, City, ST"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>💰 Purchase Price</span>
-                          <input
-                            name="purchasePrice"
-                            type="number"
-                            step="0.01"
-                            defaultValue={editingAccount?.purchasePrice || ''}
-                            placeholder="Original purchase price"
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: 'span 2' }}>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>📅 Purchase Date</span>
-                          <input
-                            name="purchaseDate"
-                            type="date"
-                            defaultValue={editingAccount?.purchaseDate || ''}
-                            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                          />
-                        </label>
-                      </div>
+                      {['Real Estate', 'Business', 'Vehicle', 'Investment Property', 'Collectibles', 'Equipment', 'Other Asset'].includes(accountFormType) && (
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '1fr 1fr', 
+                          gap: 16,
+                          padding: 16,
+                          background: accountFormIsPaidOff ? '#e8f5e9' : '#fff3e0',
+                          borderRadius: 8,
+                          border: accountFormIsPaidOff ? '1px solid #81c784' : '1px solid #ffcc80',
+                        }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>🏠 Address/Location</span>
+                            <input
+                              name="address"
+                              defaultValue={editingAccount?.address || ''}
+                              placeholder="e.g., 123 Main St, City, ST"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>💰 Purchase Price</span>
+                            <input
+                              name="purchasePrice"
+                              type="number"
+                              step="0.01"
+                              defaultValue={editingAccount?.purchasePrice || ''}
+                              placeholder="Original purchase price"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>📅 Purchase Date</span>
+                            <input
+                              name="purchaseDate"
+                              type="date"
+                              defaultValue={editingAccount?.purchaseDate || ''}
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>📝 Description</span>
+                            <input
+                              name="description"
+                              defaultValue={editingAccount?.description || ''}
+                              placeholder="Additional details about this asset"
+                              style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                            />
+                          </label>
+                        </div>
+                      )}
 
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontWeight: 500, fontSize: 13 }}>Notes</span>
@@ -10914,7 +11171,7 @@ function App() {
                 )}
               </div>
               
-              {/* Bank Account Section - Only show for Banking & Finance category */}
+              {/* Banking Info Section - Only show for Banking & Finance category */}
               {form.budgetCategory === 'finance' && (
                 <div style={{ 
                   marginTop: 20, 
@@ -10923,131 +11180,46 @@ function App() {
                   borderRadius: 8, 
                   border: '1px solid #90caf9' 
                 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 12 }}>
-                    <input
-                      type="checkbox"
-                      checked={form.hasBankAccount || false}
-                      onChange={e => setForm(f => ({ ...f, hasBankAccount: e.target.checked }))}
-                      style={{ width: 18, height: 18 }}
-                    />
-                    <span style={{ fontWeight: 600, color: '#1565c0' }}>🏦 Add Bank Account Information</span>
-                  </label>
-                  
-                  {form.hasBankAccount && (
-                    <>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-                        <label style={{ display: 'block' }}>
-                          Account Type:<br />
-                          <select
-                            value={form.bankAccountType || ''}
-                            onChange={e => {
-                              const type = e.target.value as any || null;
-                              const isLoan = ['Mortgage', 'Auto Loan', 'Personal Loan', 'Student Loan', 'Credit Line', 'Other'].includes(type);
-                              setForm(f => ({ ...f, bankAccountType: type, bankIsLoan: isLoan }));
-                            }}
-                            style={{ width: '100%', padding: 8, marginTop: 4 }}
-                          >
-                            <option value="">-- Select Type --</option>
-                            <optgroup label="Bank Accounts">
-                              <option value="Checking">Checking</option>
-                              <option value="Savings">Savings</option>
-                              <option value="Money Market">Money Market</option>
-                              <option value="CD">Certificate of Deposit</option>
-                            </optgroup>
-                            <optgroup label="Loans">
-                              <option value="Mortgage">Mortgage</option>
-                              <option value="Auto Loan">Auto Loan</option>
-                              <option value="Personal Loan">Personal Loan</option>
-                              <option value="Student Loan">Student Loan</option>
-                              <option value="Credit Line">Credit Line / HELOC</option>
-                              <option value="Other">Other</option>
-                            </optgroup>
-                          </select>
-                        </label>
-                        
-                        <label style={{ display: 'block' }}>
-                          {form.bankIsLoan ? 'Loan Balance:' : 'Account Balance:'}<br />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={form.bankBalance ?? ''}
-                            onChange={e => setForm(f => ({ ...f, bankBalance: e.target.value ? parseFloat(e.target.value) : null }))}
-                            style={{ width: '100%', padding: 8, marginTop: 4 }}
-                            placeholder="0.00"
-                          />
-                        </label>
-                      </div>
-                      
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-                        <label style={{ display: 'block' }}>
-                          Account # (last 4):<br />
-                          <input
-                            type="text"
-                            maxLength={4}
-                            value={form.bankAccountNumber ?? ''}
-                            onChange={e => setForm(f => ({ ...f, bankAccountNumber: e.target.value }))}
-                            style={{ width: '100%', padding: 8, marginTop: 4 }}
-                            placeholder="1234"
-                          />
-                        </label>
-                        
-                        <label style={{ display: 'block' }}>
-                          Routing # (last 4):<br />
-                          <input
-                            type="text"
-                            maxLength={4}
-                            value={form.bankRoutingNumber ?? ''}
-                            onChange={e => setForm(f => ({ ...f, bankRoutingNumber: e.target.value }))}
-                            style={{ width: '100%', padding: 8, marginTop: 4 }}
-                            placeholder="5678"
-                          />
-                        </label>
-                      </div>
-                      
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
-                        <label style={{ display: 'block' }}>
-                          {form.bankIsLoan ? 'Interest Rate (APR):' : 'Interest Rate (APY):'}<br />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={form.bankInterestRate ?? ''}
-                            onChange={e => setForm(f => ({ ...f, bankInterestRate: e.target.value ? parseFloat(e.target.value) : null }))}
-                            style={{ width: '100%', padding: 8, marginTop: 4 }}
-                            placeholder="4.50"
-                          />
-                        </label>
-                        
-                        {form.bankIsLoan && (
-                          <>
-                            <label style={{ display: 'block' }}>
-                              Monthly Payment:<br />
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={form.bankMonthlyPayment ?? ''}
-                                onChange={e => setForm(f => ({ ...f, bankMonthlyPayment: e.target.value ? parseFloat(e.target.value) : null }))}
-                                style={{ width: '100%', padding: 8, marginTop: 4 }}
-                                placeholder="500.00"
-                              />
-                            </label>
-                            
-                            <label style={{ display: 'block' }}>
-                              Due Day (1-31):<br />
-                              <input
-                                type="number"
-                                min="1"
-                                max="31"
-                                value={form.bankPaymentDueDay ?? ''}
-                                onChange={e => setForm(f => ({ ...f, bankPaymentDueDay: e.target.value ? parseInt(e.target.value) : null }))}
-                                style={{ width: '100%', padding: 8, marginTop: 4 }}
-                                placeholder="15"
-                              />
-                            </label>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 20 }}>🏦</span>
+                    <span style={{ fontWeight: 600, color: '#1565c0' }}>Bank Account Information</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: '#666', margin: '0 0 12px 0' }}>
+                    To add bank account details (account numbers, balances, etc.), go to the <strong>Accounts</strong> tab 
+                    and click "Add Account, Loan, or Asset". You can link accounts to this card for quick access.
+                  </p>
+                  {(() => {
+                    const linkedAccounts = accounts.filter(a => a.linkedTileId === form.id);
+                    if (linkedAccounts.length > 0) {
+                      return (
+                        <div style={{ 
+                          background: '#fff', 
+                          borderRadius: 6, 
+                          padding: 12,
+                          border: '1px solid #bbdefb',
+                        }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1565c0', marginBottom: 8 }}>
+                            Linked Accounts ({linkedAccounts.length}):
+                          </div>
+                          {linkedAccounts.map(acc => (
+                            <div key={acc.id} style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              padding: '6px 0',
+                              borderBottom: '1px solid #e0e0e0',
+                            }}>
+                              <span style={{ fontSize: 13 }}>{acc.name}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#0d47a1' }}>
+                                ${acc.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
               
