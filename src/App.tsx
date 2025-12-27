@@ -1036,7 +1036,7 @@ function App() {
     if (bankAccounts.length > 0) {
       doc.setFontSize(14);
       doc.setTextColor(25, 118, 210);
-      doc.text('💳 Bank Accounts', 14, yPos);
+      doc.text('Bank Accounts', 14, yPos);
       yPos += 5;
       
       const bankData = bankAccounts.map(acc => {
@@ -1077,7 +1077,7 @@ function App() {
       
       doc.setFontSize(14);
       doc.setTextColor(198, 40, 40);
-      doc.text('📋 Loans & Mortgages', 14, yPos);
+      doc.text('Loans & Mortgages', 14, yPos);
       yPos += 5;
       
       const loanData = loans.map(acc => {
@@ -1121,7 +1121,7 @@ function App() {
       
       doc.setFontSize(14);
       doc.setTextColor(0, 131, 143);
-      doc.text('🏠 Assets', 14, yPos);
+      doc.text('Assets', 14, yPos);
       yPos += 5;
       
       const assetData = assets.map(acc => {
