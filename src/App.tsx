@@ -1,6 +1,8 @@
 // ...IMPORTS...
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   DndContext,
   closestCenter,
@@ -953,6 +955,225 @@ function App() {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [accountFormType, setAccountFormType] = useState<string>('Checking');
   const [accountFormIsPaidOff, setAccountFormIsPaidOff] = useState(false);
+  const [expandedAccountGroups, setExpandedAccountGroups] = useState<Set<string>>(new Set());
+  
+  // Toggle expand/collapse for account groups
+  const toggleAccountGroup = (groupId: string) => {
+    setExpandedAccountGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+  
+  // Generate PDF Report for Accounts
+  const generateAccountsPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const today = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    
+    // Title
+    doc.setFontSize(24);
+    doc.setTextColor(25, 118, 210); // Blue
+    doc.text('Finance Companion', pageWidth / 2, 20, { align: 'center' });
+    
+    doc.setFontSize(16);
+    doc.setTextColor(100);
+    doc.text('Accounts Report', pageWidth / 2, 30, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(150);
+    doc.text(`Generated: ${today}`, pageWidth / 2, 38, { align: 'center' });
+    
+    let yPos = 50;
+    
+    // Summary Section
+    const bankAccounts = accounts.filter(a => !a.isLoan && !a.isAsset);
+    const loans = accounts.filter(a => a.isLoan);
+    const assets = accounts.filter(a => a.isAsset);
+    
+    const totalBankAccounts = bankAccounts.reduce((sum, a) => sum + a.currentBalance, 0);
+    const totalLoans = loans.reduce((sum, a) => sum + a.currentBalance, 0);
+    const totalAssets = assets.reduce((sum, a) => sum + a.currentBalance, 0);
+    const netWorth = totalBankAccounts + totalAssets - totalLoans;
+    
+    // Summary Box
+    doc.setFillColor(240, 248, 255);
+    doc.rect(14, yPos - 5, pageWidth - 28, 35, 'F');
+    doc.setDrawColor(200);
+    doc.rect(14, yPos - 5, pageWidth - 28, 35, 'S');
+    
+    doc.setFontSize(12);
+    doc.setTextColor(50);
+    doc.text('Summary', 20, yPos + 5);
+    
+    doc.setFontSize(10);
+    const summaryCol1 = 20;
+    const summaryCol2 = pageWidth / 2 + 10;
+    
+    doc.setTextColor(25, 118, 210);
+    doc.text(`Bank Accounts: $${totalBankAccounts.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, summaryCol1, yPos + 15);
+    doc.setTextColor(0, 131, 143);
+    doc.text(`Assets: $${totalAssets.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, summaryCol2, yPos + 15);
+    doc.setTextColor(198, 40, 40);
+    doc.text(`Loans: $${totalLoans.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, summaryCol1, yPos + 23);
+    doc.setTextColor(46, 125, 50);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Net Worth: $${netWorth.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, summaryCol2, yPos + 23);
+    doc.setFont('helvetica', 'normal');
+    
+    yPos += 45;
+    
+    // Bank Accounts Table
+    if (bankAccounts.length > 0) {
+      doc.setFontSize(14);
+      doc.setTextColor(25, 118, 210);
+      doc.text('💳 Bank Accounts', 14, yPos);
+      yPos += 5;
+      
+      const bankData = bankAccounts.map(acc => {
+        const linkedTile = acc.linkedTileId ? tiles.find(t => t.id === acc.linkedTileId) : null;
+        return [
+          acc.name,
+          linkedTile?.name || acc.bankName || '-',
+          acc.accountType,
+          acc.accountNumber ? `****${acc.accountNumber}` : '-',
+          `$${acc.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          acc.interestRate ? `${acc.interestRate}%` : '-'
+        ];
+      });
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Account Name', 'Bank', 'Type', 'Account #', 'Balance', 'APY']],
+        body: bankData,
+        theme: 'striped',
+        headStyles: { fillColor: [25, 118, 210], textColor: 255 },
+        styles: { fontSize: 9 },
+        columnStyles: {
+          4: { halign: 'right' },
+          5: { halign: 'center' }
+        },
+      });
+      
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+    }
+    
+    // Loans Table
+    if (loans.length > 0) {
+      // Check if we need a new page
+      if (yPos > 220) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.setFontSize(14);
+      doc.setTextColor(198, 40, 40);
+      doc.text('📋 Loans & Mortgages', 14, yPos);
+      yPos += 5;
+      
+      const loanData = loans.map(acc => {
+        const linkedTile = acc.linkedTileId ? tiles.find(t => t.id === acc.linkedTileId) : null;
+        return [
+          acc.name,
+          linkedTile?.name || acc.bankName || '-',
+          acc.accountType,
+          `$${acc.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          acc.interestRate ? `${acc.interestRate}%` : '-',
+          acc.monthlyPayment ? `$${acc.monthlyPayment.toLocaleString()}` : '-',
+          acc.paymentDueDay ? `${acc.paymentDueDay}${acc.paymentDueDay === 1 ? 'st' : acc.paymentDueDay === 2 ? 'nd' : acc.paymentDueDay === 3 ? 'rd' : 'th'}` : '-'
+        ];
+      });
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Account Name', 'Lender', 'Type', 'Balance', 'APR', 'Monthly', 'Due']],
+        body: loanData,
+        theme: 'striped',
+        headStyles: { fillColor: [198, 40, 40], textColor: 255 },
+        styles: { fontSize: 9 },
+        columnStyles: {
+          3: { halign: 'right' },
+          4: { halign: 'center' },
+          5: { halign: 'right' },
+          6: { halign: 'center' }
+        },
+      });
+      
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+    }
+    
+    // Assets Table
+    if (assets.length > 0) {
+      // Check if we need a new page
+      if (yPos > 220) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 131, 143);
+      doc.text('🏠 Assets', 14, yPos);
+      yPos += 5;
+      
+      const assetData = assets.map(acc => {
+        return [
+          acc.name,
+          acc.accountType,
+          acc.address || '-',
+          acc.purchasePrice ? `$${acc.purchasePrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '-',
+          `$${acc.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          acc.isPaidOff ? 'Yes' : 'No'
+        ];
+      });
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Asset Name', 'Type', 'Location', 'Purchase Price', 'Current Value', 'Paid Off']],
+        body: assetData,
+        theme: 'striped',
+        headStyles: { fillColor: [0, 131, 143], textColor: 255 },
+        styles: { fontSize: 9 },
+        columnStyles: {
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'center' }
+        },
+      });
+    }
+    
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(
+        `Page ${i} of ${pageCount} | Finance Companion Tool`,
+        pageWidth / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: 'center' }
+      );
+    }
+    
+    // Open PDF in new window for preview/print, then allow download
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    const previewWindow = window.open(pdfUrl, '_blank');
+    
+    // Also trigger download
+    setTimeout(() => {
+      doc.save(`Accounts-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+    }, 500);
+  };
   
   // Handle account reordering via drag and drop (supports tiles, accounts, and assets)
   const handleAccountDragEnd = (event: any) => {
@@ -8576,8 +8797,8 @@ function App() {
                   return null;
                 })()}
 
-                {/* Add Account Button */}
-                <div style={{ marginBottom: 24 }}>
+                {/* Action Buttons */}
+                <div style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <button
                     onClick={() => {
                       setEditingAccount(null);
@@ -8610,6 +8831,36 @@ function App() {
                     }}
                   >
                     ➕ Add Account, Loan, or Asset
+                  </button>
+                  
+                  <button
+                    onClick={generateAccountsPDF}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '12px 24px',
+                      background: 'linear-gradient(135deg, #7b1fa2 0%, #ab47bc 100%)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(123, 31, 162, 0.3)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(123, 31, 162, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(123, 31, 162, 0.3)';
+                    }}
+                    title="Generate PDF report of all accounts"
+                  >
+                    📄 Generate PDF Report
                   </button>
                 </div>
 
@@ -8733,6 +8984,7 @@ function App() {
                           const linkedTile = tiles.find(t => t.id === tileId);
                           const accountsInGroup = grouped[tileIdStr];
                           const groupTotal = accountsInGroup.reduce((sum, a) => sum + a.currentBalance, 0);
+                          const isExpanded = expandedAccountGroups.has(tileIdStr);
                           
                           return (
                             <div key={tileIdStr} style={{
@@ -8741,7 +8993,7 @@ function App() {
                               border: '1px solid #e0e0e0',
                               overflow: 'hidden',
                             }}>
-                              {/* Card Header */}
+                              {/* Card Header - Click to expand/collapse */}
                               <div 
                                 style={{
                                   display: 'flex',
@@ -8749,12 +9001,22 @@ function App() {
                                   justifyContent: 'space-between',
                                   padding: '12px 16px',
                                   background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
-                                  borderBottom: '1px solid #90caf9',
-                                  cursor: linkedTile?.url ? 'pointer' : 'default',
+                                  borderBottom: isExpanded ? '1px solid #90caf9' : 'none',
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
                                 }}
-                                onClick={() => linkedTile?.url && window.open(linkedTile.url, '_blank')}
+                                onClick={() => toggleAccountGroup(tileIdStr)}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  {/* Expand/Collapse chevron */}
+                                  <span style={{ 
+                                    fontSize: 16, 
+                                    color: '#1565c0',
+                                    transition: 'transform 0.2s ease',
+                                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                  }}>
+                                    ▶
+                                  </span>
                                   {linkedTile?.logo && (
                                     <img 
                                       src={linkedTile.logo} 
@@ -8781,78 +9043,120 @@ function App() {
                                     </div>
                                   </div>
                                   {linkedTile?.url && (
-                                    <span style={{ fontSize: 16, color: '#1976d2' }}>↗</span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.open(linkedTile.url, '_blank');
+                                      }}
+                                      title={`Open ${linkedTile.name}`}
+                                      style={{
+                                        background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: 6,
+                                        padding: '6px 10px',
+                                        cursor: 'pointer',
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                      }}
+                                    >
+                                      🔗 Open
+                                    </button>
                                   )}
                                 </div>
                               </div>
-                              {/* Accounts in this group */}
-                              <DndContext 
-                                sensors={sensors}
-                                collisionDetection={pointerWithin} 
-                                onDragEnd={handleAccountDragEnd}
-                              >
-                                <SortableContext 
-                                  items={accountsInGroup.map(a => `bank-account-${a.id}`)} 
-                                  strategy={verticalListSortingStrategy}
+                              {/* Accounts in this group - collapsible */}
+                              {isExpanded && (
+                                <DndContext 
+                                  sensors={sensors}
+                                  collisionDetection={pointerWithin} 
+                                  onDragEnd={handleAccountDragEnd}
                                 >
-                                  <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    {accountsInGroup.map(account => (
-                                      <SortableAccountCard key={account.id} account={account} prefix="bank-account" />
-                                    ))}
-                                  </div>
-                                </SortableContext>
-                              </DndContext>
+                                  <SortableContext 
+                                    items={accountsInGroup.map(a => `bank-account-${a.id}`)} 
+                                    strategy={verticalListSortingStrategy}
+                                  >
+                                    <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                      {accountsInGroup.map(account => (
+                                        <SortableAccountCard key={account.id} account={account} prefix="bank-account" />
+                                      ))}
+                                    </div>
+                                  </SortableContext>
+                                </DndContext>
+                              )}
                             </div>
                           );
                         })}
                         
                         {/* Unlinked Accounts */}
-                        {unlinkedAccounts.length > 0 && (
-                          <div style={{
-                            background: '#fff',
-                            borderRadius: 12,
-                            border: '1px dashed #bdbdbd',
-                            overflow: 'hidden',
-                          }}>
+                        {unlinkedAccounts.length > 0 && (() => {
+                          const isUnlinkedExpanded = expandedAccountGroups.has('unlinked');
+                          return (
                             <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '12px 16px',
-                              background: '#f5f5f5',
-                              borderBottom: '1px dashed #bdbdbd',
+                              background: '#fff',
+                              borderRadius: 12,
+                              border: '1px dashed #bdbdbd',
+                              overflow: 'hidden',
                             }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <span style={{ fontSize: 24 }}>🏦</span>
-                                <div>
-                                  <div style={{ fontWeight: 600, color: '#666' }}>Other Accounts</div>
-                                  <div style={{ fontSize: 11, color: '#999' }}>
-                                    Not linked to a banking app
+                              <div 
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '12px 16px',
+                                  background: '#f5f5f5',
+                                  borderBottom: isUnlinkedExpanded ? '1px dashed #bdbdbd' : 'none',
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                }}
+                                onClick={() => toggleAccountGroup('unlinked')}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  {/* Expand/Collapse chevron */}
+                                  <span style={{ 
+                                    fontSize: 16, 
+                                    color: '#666',
+                                    transition: 'transform 0.2s ease',
+                                    transform: isUnlinkedExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                  }}>
+                                    ▶
+                                  </span>
+                                  <span style={{ fontSize: 24 }}>🏦</span>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: '#666' }}>Other Accounts</div>
+                                    <div style={{ fontSize: 11, color: '#999' }}>
+                                      {unlinkedAccounts.length} account{unlinkedAccounts.length > 1 ? 's' : ''} • Not linked to a banking app
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                              <div style={{ fontWeight: 700, color: '#333', fontSize: 18 }}>
-                                ${unlinkedAccounts.reduce((sum, a) => sum + a.currentBalance, 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                              </div>
-                            </div>
-                            <DndContext 
-                              sensors={sensors}
-                              collisionDetection={pointerWithin} 
-                              onDragEnd={handleAccountDragEnd}
-                            >
-                              <SortableContext 
-                                items={unlinkedAccounts.map(a => `bank-account-${a.id}`)} 
-                                strategy={verticalListSortingStrategy}
-                              >
-                                <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                  {unlinkedAccounts.map(account => (
-                                    <SortableAccountCard key={account.id} account={account} prefix="bank-account" />
-                                  ))}
+                                <div style={{ fontWeight: 700, color: '#333', fontSize: 18 }}>
+                                  ${unlinkedAccounts.reduce((sum, a) => sum + a.currentBalance, 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </div>
-                              </SortableContext>
-                            </DndContext>
-                          </div>
-                        )}
+                              </div>
+                              {isUnlinkedExpanded && (
+                                <DndContext 
+                                  sensors={sensors}
+                                  collisionDetection={pointerWithin} 
+                                  onDragEnd={handleAccountDragEnd}
+                                >
+                                  <SortableContext 
+                                    items={unlinkedAccounts.map(a => `bank-account-${a.id}`)} 
+                                    strategy={verticalListSortingStrategy}
+                                  >
+                                    <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                      {unlinkedAccounts.map(account => (
+                                        <SortableAccountCard key={account.id} account={account} prefix="bank-account" />
+                                      ))}
+                                    </div>
+                                  </SortableContext>
+                                </DndContext>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
